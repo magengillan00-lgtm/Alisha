@@ -239,7 +239,7 @@
             const allAnimationNames = ['idle', ...talkingAnimationNames];
             for (const name of allAnimationNames) {
                 try {
-                    const clip = await loadMixamoAnimation(assetPathPrefix + name + '.fbx', currentVrm);
+                    const clip = await loadMixamoAnimation(assetPathPrefix + 'animations/' + name + '.fbx', currentVrm);
                     clip.name = name; 
                     animationsMap.set(name, clip);
                     console.log(` -> ${name}.fbx preloaded.`);
@@ -471,7 +471,7 @@
             scheduleNextBlink();
 
             // -- Load an HDR image for realistic environment lighting and background --
-            new RGBELoader().load(assetPathPrefix + 'background.hdr', function (texture) {
+            new RGBELoader().load(assetPathPrefix + 'backgrounds/background.hdr', function (texture) {
                 texture.mapping = THREE.EquirectangularReflectionMapping;
                 scene.background = texture;
                 scene.environment = texture;
