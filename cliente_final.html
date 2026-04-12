@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Interactive VRM Viewer (v4.3 - Mobile Ready)</title>
+    <title>Alicia AI - Interactive Avatar</title>
     <style>
-        /* FIX 2: Added styles for a better app-like feel on mobile */
         body {
             margin: 0;
-            overflow: hidden; /* Prevent scrollbars */
+            overflow: hidden;
             background-color: #1a1a1a;
-            overscroll-behavior: none; /* Prevent "pull-to-refresh" */
-            -webkit-user-select: none; /* Disable text selection */
-            -moz-user-select: none;
-            -ms-user-select: none;
+            overscroll-behavior: none;
+            -webkit-user-select: none;
             user-select: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
         canvas { display: block; }
@@ -32,7 +30,6 @@
             align-items: center;
             z-index: 999;
             color: white;
-            font-family: sans-serif;
             opacity: 1;
             transition: opacity 0.8s ease-in-out;
         }
@@ -57,38 +54,54 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* FIX 3: Improved button style for mobile touch targets */
         #controlButton {
             position: absolute;
-            bottom: 25px; /* More space from the edge */
-            right: 25px;
-            font-size: 28px; /* Larger icon */
-            width: 70px;  /* Larger touch target */
-            height: 70px;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
-            border: 3px solid white;
+            border: 4px solid white;
             background-color: rgba(0,0,0,0.6);
             color: white;
             cursor: pointer;
             display: none;
             z-index: 10;
-            transition: background-color 0.3s, transform 0.1s;
-            -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
-            touch-action: manipulation; /* Remove tap delay */
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
         }
         #controlButton:disabled { cursor: not-allowed; opacity: 0.5; }
-        #controlButton.recording { background-color: rgba(255, 0, 0, 0.7); }
-        #controlButton:active { transform: scale(0.95); } /* Press-down effect */
-
+        #controlButton.recording { 
+            background-color: rgba(255, 0, 0, 0.7); 
+            transform: translateX(-50%) scale(1.1);
+            box-shadow: 0 0 20px rgba(255,0,0,0.5);
+        }
+        
+        #status-text {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <p>Loading avatar and animations...</p>
+        <p id="loading-text">Loading Alicia and her world...</p>
     </div>
 
-    <button id="controlButton">▶</button>
+    <div id="status-text">Ready to talk</div>
+    <button id="controlButton">🎤</button>
     <audio id="audioPlayer" crossorigin="anonymous"></audio>
 
     <script type="importmap">
@@ -108,38 +121,40 @@
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
         import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-        // -- Global variables for the scene, renderer, and animation --
+        // -- CONFIGURATION --
+        const GEMINI_API_KEY = "AIzaSyBam_QaB2ogtvxiqCEkKMGwdqHSkNdqUdE";
+        const SYSTEM_PROMPT = "أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي. ردي دائماً باختصار وبأسلوب مرح باللغة العربية. يجب ألا تتجاوز إجابتك جملتين.";
+        const assetPathPrefix = '/assets/';
+        const talkingAnimationNames = ['animations/anim_1', 'animations/anim_2', 'animations/anim_3'];
+
         let scene, camera, renderer, clock, mixer;
         let currentVrm = null;
         let idleAction, currentAction;
         const controlButton = document.getElementById('controlButton');
         const audioPlayer = document.getElementById('audioPlayer');
-        const assetPathPrefix = '/assets/';
+        const statusText = document.getElementById('status-text');
         const animationsMap = new Map();
-        const talkingAnimationNames = ['anim_1', 'anim_2', 'anim_3'];
 
-        // -- Audio recording variables --
-        let mediaRecorder;
-        let audioChunks = [];
-        let isRecording = false;
+        // -- Web Speech API for STT --
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-SA';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+        }
 
-        // -- State manager for automatic blinking --
         const blinkManager = {
             isBlinking: false, blinkTimer: 0, nextBlinkTime: 0, timeSinceLastBlink: 0,
             BLINK_DURATION: 0.15, BLINK_INTERVAL_MIN: 2.0, BLINK_INTERVAL_MAX: 8.0,
         };
         
-        // -- State manager for audio-driven lip synchronization --
         const lipSyncContext = {
             initialized: false, audioContext: null, analyser: null, dataArray: null,
             currentVolume: 0,
         };
 
-        /**
-         * @dev Maps Mixamo's bone names to the VRM humanoid bone standard.
-         * This is crucial for retargeting animations from Mixamo skeletons to VRM models.
-         * The key is the Mixamo bone name, and the value is the corresponding VRM standard name.
-         */
         const mixamoVRMRigMap = {
             mixamorigHips: 'hips', mixamorigSpine: 'spine', mixamorigSpine1: 'chest',
             mixamorigSpine2: 'upperChest', mixamorigNeck: 'neck', mixamorigHead: 'head',
@@ -153,26 +168,15 @@
             mixamorigRightFoot: 'rightFoot', mixamorigRightToeBase: 'rightToes',
         };
 
-        // -- Schedules the next blink to occur at a random interval --
         function scheduleNextBlink() {
             blinkManager.nextBlinkTime = blinkManager.BLINK_INTERVAL_MIN + Math.random() * (blinkManager.BLINK_INTERVAL_MAX - blinkManager.BLINK_INTERVAL_MIN);
         }
 
-        /**
-         * @dev Loads a Mixamo animation (FBX format) and retargets it to the provided VRM model.
-         * It processes each track (position, rotation) in the animation, maps it to the
-         * corresponding VRM bone, and adjusts the transforms to fit the VRM's skeleton.
-         * @param {string} url - The URL of the FBX animation file.
-         * @param {object} vrm - The loaded VRM object.
-         * @returns {Promise<THREE.AnimationClip>} A promise that resolves with the retargeted animation clip.
-         */
         async function loadMixamoAnimation(url, vrm) {
             const loader = new FBXLoader();
             const asset = await loader.loadAsync(url);
             const clip = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com');
             const tracks = [];
-
-            // -- Prepare quaternions and scaling factors for transform adjustments --
             const restRotationInverse = new THREE.Quaternion();
             const parentRestWorldRotation = new THREE.Quaternion();
             const _quatA = new THREE.Quaternion();
@@ -185,15 +189,11 @@
                 const mixamoRigName = trackSplitted[0];
                 const vrmBoneName = mixamoVRMRigMap[mixamoRigName];
                 const vrmNodeName = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName)?.name;
-                
                 if (vrmNodeName != null) {
                     const propertyName = trackSplitted[1];
                     const mixamoRigNode = asset.getObjectByName(mixamoRigName);
-
-                    // -- Calculate and apply rotation correction to align Mixamo's T-pose with VRM's T-pose --
                     mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
                     mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);
-
                     if (track instanceof THREE.QuaternionKeyframeTrack) {
                         for (let i = 0; i < track.values.length; i += 4) {
                             const flatQuaternion = track.values.slice(i, i + 4);
@@ -202,7 +202,6 @@
                         }
                         tracks.push(new THREE.QuaternionKeyframeTrack(`${vrmNodeName}.${propertyName}`, track.times, track.values.map((v, i) => (vrm.meta?.metaVersion === '0' && i % 2 === 0 ? -v : v))));
                     } else if (track instanceof THREE.VectorKeyframeTrack) {
-                        // -- Adjust position keyframes, especially for the hips, to match the VRM's height --
                         const value = track.values.map((v, i) => (vrm.meta?.metaVersion === '0' && i % 3 !== 1 ? -v : v) * hipsPositionScale);
                         tracks.push(new THREE.VectorKeyframeTrack(`${vrmNodeName}.${propertyName}`, track.times, value));
                     }
@@ -211,222 +210,187 @@
             return new THREE.AnimationClip(clip.name, clip.duration, tracks);
         }
 
-        /**
-         * @dev Initializes the Web Audio API for lip-sync analysis.
-         * It creates an AudioContext, connects the audio player element, and sets up an
-         * AnalyserNode to extract frequency data for mouth movement.
-         */
         function setupLipSync() {
             if (lipSyncContext.initialized) return;
-            lipSyncContext.audioContext = new AudioContext();
+            lipSyncContext.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const source = lipSyncContext.audioContext.createMediaElementSource(audioPlayer);
             lipSyncContext.analyser = lipSyncContext.audioContext.createAnalyser();
             lipSyncContext.analyser.fftSize = 256;
-            const bufferLength = lipSyncContext.analyser.frequencyBinCount;
-            lipSyncContext.dataArray = new Uint8Array(bufferLength);
+            lipSyncContext.dataArray = new Uint8Array(lipSyncContext.analyser.frequencyBinCount);
             source.connect(lipSyncContext.analyser);
             lipSyncContext.analyser.connect(lipSyncContext.audioContext.destination);
             lipSyncContext.initialized = true;
         }
         
-        /**
-         * @dev Preloads all necessary animations (idle and talking) before showing the main scene.
-         * This prevents stuttering when an animation is played for the first time.
-         * After loading, it waits for a fixed duration before hiding the loading screen.
-         */
         async function preloadAnimations() {
-            console.log('Starting animation preload...');
-            const allAnimationNames = ['idle', ...talkingAnimationNames];
+            console.log('Preloading animations...');
+            const allAnimationNames = ['idle', ...talkingAnimationNames.map(n => n.split('/').pop())];
             for (const name of allAnimationNames) {
                 try {
-                    const clip = await loadMixamoAnimation(assetPathPrefix + 'animations/' + name + '.fbx', currentVrm);
+                    const path = name === 'idle' ? 'animations/idle.fbx' : `animations/${name}.fbx`;
+                    const clip = await loadMixamoAnimation(assetPathPrefix + path, currentVrm);
                     clip.name = name; 
                     animationsMap.set(name, clip);
-                    console.log(` -> ${name}.fbx preloaded.`);
                 } catch (error) {
-                    console.error(`Error preloading animation ${name}.fbx:`, error);
+                    console.error(`Error preloading animation ${name}:`, error);
                 }
             }
-            console.log('--- Animation preload finished. ---');
-            console.log('Components loaded. Waiting an additional 10 seconds...');
-
-            // -- Hide the loading screen and enable controls after a delay --
+            
             setTimeout(() => {
                 const loadingOverlay = document.getElementById('loading-overlay');
                 loadingOverlay.classList.add('hidden');
-
-                loadingOverlay.addEventListener('transitionend', () => {
-                    loadingOverlay.style.display = 'none';
-                }, { once: true });
-
-                console.log('Showing scene and activating controls.');
                 controlButton.disabled = false;
                 controlButton.style.display = 'block';
+                statusText.style.display = 'block';
                 setupIdleAnimation();
-            }, 10000); // 10-second artificial wait
+            }, 2000);
         }
 
-        // -- Sets up and plays the default idle animation --
         function setupIdleAnimation() {
-            if (!animationsMap.has('idle')) return;
             const idleClip = animationsMap.get('idle');
+            if (!idleClip) return;
             idleAction = mixer.clipAction(idleClip);
             idleAction.play();
             currentAction = idleAction;
         }
 
-        /**
-         * @dev Selects and plays a random talking animation from the predefined list.
-         * It ensures the next animation is different from the current one and smoothly
-         * cross-fades between them.
-         */
         function playRandomTalkingAnimation() {
             if (audioPlayer.paused || !currentAction) return;
-            
-            let nextAnimationName;
-            const currentClipName = currentAction.getClip() ? currentAction.getClip().name : null;
-            // -- Pick a new animation that is different from the current one --
+            const names = talkingAnimationNames.map(n => n.split('/').pop());
+            let nextName;
             do {
-                nextAnimationName = talkingAnimationNames[Math.floor(Math.random() * talkingAnimationNames.length)];
-            } while (talkingAnimationNames.length > 1 && nextAnimationName === currentClipName);
+                nextName = names[Math.floor(Math.random() * names.length)];
+            } while (names.length > 1 && nextName === currentAction.getClip().name);
 
-            const nextClip = animationsMap.get(nextAnimationName);
+            const nextClip = animationsMap.get(nextName);
             if (!nextClip) return;
-
             const nextAction = mixer.clipAction(nextClip);
             nextAction.reset().setLoop(THREE.LoopOnce, 1).play();
-            nextAction.clampWhenFinished = true; // Prevents the animation from reverting to the first frame on completion
-
-            // -- Smoothly transition from the current animation to the next one --
+            nextAction.clampWhenFinished = true;
             currentAction.crossFadeTo(nextAction, 0.5);
             currentAction = nextAction;
         }
 
-        /**
-         * @dev Main function to load the VRM model.
-         * It initializes the GLTFLoader with the VRM plugin, adds the model to the scene,
-         * sets up the animation mixer, and then triggers the animation preloading process.
-         * @param {string} modelUrl - The URL of the .vrm file.
-         */
         async function loadVRM(modelUrl) {
             const loader = new GLTFLoader();
             loader.register(parser => new VRMLoaderPlugin(parser));
             try {
                 const gltf = await loader.loadAsync(modelUrl);
-                const vrm = gltf.userData.vrm;
-                if (currentVrm) scene.remove(currentVrm.scene);
-                currentVrm = vrm;
-                scene.add(vrm.scene);
-                VRMUtils.rotateVRM0(vrm); // Corrects orientation for VRM 0.x models
-                
-                // -- Initialize the animation mixer for this VRM --
+                currentVrm = gltf.userData.vrm;
+                scene.add(currentVrm.scene);
+                VRMUtils.rotateVRM0(currentVrm);
                 mixer = new THREE.AnimationMixer(currentVrm.scene);
-                // -- Listen for animation completion to chain talking animations --
                 mixer.addEventListener('finished', (e) => {
-                    if (!audioPlayer.paused && talkingAnimationNames.includes(e.action.getClip().name)) {
+                    if (!audioPlayer.paused && talkingAnimationNames.some(n => n.includes(e.action.getClip().name))) {
                         playRandomTalkingAnimation();
                     }
                 });
-
                 await preloadAnimations();
             } catch (error) {
                 console.error('Error loading VRM:', error);
-                const loadingOverlay = document.getElementById('loading-overlay');
-                loadingOverlay.innerHTML = '<p>Error loading model. Please refresh the page.</p>';
+                document.getElementById('loading-text').innerText = 'Error loading model.';
             }
         }
 
-        // -- Starts the audio recording process using the browser's microphone --
-        async function startRecording() {
+        // -- Gemini & TTS Integration --
+        async function getGeminiResponse(text) {
+            updateStatus('Thinking...');
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                isRecording = true;
-                audioChunks = [];
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-                mediaRecorder.onstop = sendAudioToServer; // Set callback for when recording stops
-                mediaRecorder.start();
-                controlButton.classList.add('recording');
-                controlButton.textContent = '■';
-            } catch (e) { console.error('Error accessing microphone:', e); }
-        }
-
-        // -- Stops the audio recording --
-        function stopRecording() {
-            if (mediaRecorder && isRecording) {
-                mediaRecorder.stop();
-                isRecording = false;
-                controlButton.classList.remove('recording');
-                controlButton.textContent = '...'; // Intermediate state
-                controlButton.disabled = true;
-            }
-        }
-
-        /**
-         * @dev Called when recording stops. It sends the recorded audio to the server,
-         * receives a processed audio file back, and plays it.
-         */
-        async function sendAudioToServer() {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'user_audio.webm');
-            try {
-                // -- Ensure AudioContext is running (browsers may suspend it) --
-                if (!lipSyncContext.initialized) setupLipSync();
-                if (lipSyncContext.audioContext.state === 'suspended') {
-                    await lipSyncContext.audioContext.resume();
-                }
-
-                // -- Post the audio data to the backend endpoint --
-                const res = await fetch('/process_audio', { method: 'POST', body: formData });
-                if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
-                const { audio_file } = await res.json();
-                
-                // -- Callback to start animations once the audio is ready to play --
-                const onAudioReady = () => {
-                    audioPlayer.play();
-                    console.log("Audio started, waiting 1.2s to animate...");
-                    setTimeout(() => {
-                        console.log("Starting animation chain.");
-                        playRandomTalkingAnimation();
-                    }, 1200); // Delay to sync animation start with audio
-                };
-                audioPlayer.addEventListener('canplaythrough', onAudioReady, { once: true });
-                audioPlayer.src = assetPathPrefix + audio_file;
-                audioPlayer.load();
-
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + text }] }]
+                    })
+                });
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
             } catch (e) {
-                console.error('Error communicating with the server:', e);
-                controlButton.disabled = false;
-                controlButton.textContent = '▶';
-                // -- Revert to idle animation on error --
+                console.error('Gemini Error:', e);
+                return "عذراً، واجهت مشكلة في التفكير.";
+            }
+        }
+
+        async function speakText(text) {
+            updateStatus('Speaking...');
+            // Using Web Speech API for TTS (Direct Browser Support)
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ar-SA';
+            utterance.onstart = () => {
+                if (!lipSyncContext.initialized) setupLipSync();
+                playRandomTalkingAnimation();
+            };
+            utterance.onend = () => {
                 if (currentAction !== idleAction) {
                     currentAction.crossFadeTo(idleAction.reset().play(), 0.5);
                     currentAction = idleAction;
                 }
-            }
+                updateStatus('Ready');
+                controlButton.disabled = false;
+            };
+            
+            // Manual Lip Sync for SpeechSynthesis (Since it doesn't provide frequency data easily)
+            const speakInterval = setInterval(() => {
+                if (window.speechSynthesis.speaking) {
+                    const vol = 0.5 + Math.random() * 0.5;
+                    currentVrm.expressionManager.setValue('aa', vol);
+                } else {
+                    clearInterval(speakInterval);
+                    currentVrm.expressionManager.setValue('aa', 0);
+                }
+            }, 100);
+
+            window.speechSynthesis.speak(utterance);
         }
 
-        /**
-         * @dev The main animation loop, called on every frame.
-         * It updates the animation mixer, the VRM model's state (including blinking and look-at),
-         * calculates lip-sync values, and renders the scene.
-         */
+        function updateStatus(text) {
+            statusText.innerText = text;
+        }
+
+        if (recognition) {
+            recognition.onstart = () => {
+                updateStatus('Listening...');
+                controlButton.classList.add('recording');
+            };
+            recognition.onresult = async (event) => {
+                const text = event.results[0][0].transcript;
+                updateStatus('Heard: ' + text);
+                controlButton.classList.remove('recording');
+                controlButton.disabled = true;
+                const aiResponse = await getGeminiResponse(text);
+                await speakText(aiResponse);
+            };
+            recognition.onerror = () => {
+                updateStatus('Error hearing you');
+                controlButton.classList.remove('recording');
+                controlButton.disabled = false;
+            };
+            recognition.onend = () => {
+                controlButton.classList.remove('recording');
+            };
+        }
+
+        controlButton.addEventListener('click', () => {
+            if (recognition) {
+                recognition.start();
+            } else {
+                alert('Speech recognition not supported in this browser.');
+            }
+        });
+
         function animate() {
             requestAnimationFrame(animate);
-            const dt = clock.getDelta(); // Time since last frame
+            const dt = clock.getDelta();
             if (mixer) mixer.update(dt);
-            
             if (currentVrm) {
-                currentVrm.update(dt); // Update VRM components like spring bones
+                currentVrm.update(dt);
                 const expressionManager = currentVrm.expressionManager;
-
-                // -- Automatic Blinking Logic --
                 blinkManager.timeSinceLastBlink += dt;
                 if (blinkManager.isBlinking) {
                     blinkManager.blinkTimer += dt;
                     const progress = blinkManager.blinkTimer / blinkManager.BLINK_DURATION;
-                    expressionManager.setValue('blink', Math.sin(Math.PI * progress)); // Smooth blink using a sine curve
+                    expressionManager.setValue('blink', Math.sin(Math.PI * progress));
                     if (progress >= 1.0) {
                         blinkManager.isBlinking = false;
                         expressionManager.setValue('blink', 0);
@@ -437,40 +401,14 @@
                     blinkManager.timeSinceLastBlink = 0;
                     scheduleNextBlink();
                 }
-
-                // -- Lip Sync Logic --
-                if (lipSyncContext.initialized && !audioPlayer.paused) {
-                    lipSyncContext.analyser.getByteFrequencyData(lipSyncContext.dataArray);
-                    let sum = 0;
-                    for (let i = 0; i < lipSyncContext.dataArray.length; i++) { sum += lipSyncContext.dataArray[i]; }
-                    const average = sum / lipSyncContext.dataArray.length;
-                    
-                    let volume = average / 60.0; // Normalize volume
-                    volume = Math.pow(volume, 0.7); // Apply a curve to make it more responsive
-                    const targetVolume = Math.min(volume, 1.0);
-                    
-                    // -- Smoothly interpolate to the target volume to avoid jittery mouth movement --
-                    lipSyncContext.currentVolume = THREE.MathUtils.lerp(lipSyncContext.currentVolume, targetVolume, 0.4);
-                    expressionManager.setValue('aa', lipSyncContext.currentVolume); // Drive the 'aa' blend shape
-                } else if (lipSyncContext.initialized) {
-                     // -- Smoothly close the mouth when audio stops --
-                     lipSyncContext.currentVolume = THREE.MathUtils.lerp(lipSyncContext.currentVolume, 0, 0.2);
-                     expressionManager.setValue('aa', lipSyncContext.currentVolume);
-                }
             }
             if (renderer) renderer.render(scene, camera);
         }
 
-        /**
-         * @dev Initializes the entire Three.js scene, camera, renderer, lighting, and controls.
-         * It also kicks off the loading of the VRM model.
-         */
         function init() {
             scene = new THREE.Scene();
             clock = new THREE.Clock();
             scheduleNextBlink();
-
-            // -- Load an HDR image for realistic environment lighting and background --
             new RGBELoader().load(assetPathPrefix + 'backgrounds/background.hdr', function (texture) {
                 texture.mapping = THREE.EquirectangularReflectionMapping;
                 scene.background = texture;
@@ -478,58 +416,28 @@
             });
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.4, 2.5);
-
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.toneMapping = THREE.ACESFilmicToneMapping; // For better color and lighting
-            renderer.toneMappingExposure = 1.0;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
             document.body.appendChild(renderer.domElement);
-
-            // -- Add orbit controls to allow the user to rotate and zoom the camera --
             const controls = new OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 1.2, 0); // Point camera at the avatar's upper body
+            controls.target.set(0, 1.2, 0);
             controls.update();
-            
-            // -- Add basic lighting to the scene --
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             scene.add(ambientLight);
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
             dirLight.position.set(1, 1, 1).normalize();
             scene.add(dirLight);
-            
-            // -- Handle window resizing --
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            
-            // -- Start the application by loading the model and starting the animation loop --
-            loadVRM(assetPathPrefix + 'waifu.vrm');
+            loadVRM(assetPathPrefix + 'models/waifu.vrm');
             animate();
         }
 
-        // -- Event listener for when the audio playback finishes --
-        audioPlayer.addEventListener('ended', () => {
-            console.log('Audio finished. Returning to idle.');
-            // -- Fade back to the idle animation --
-            if (currentAction !== idleAction) {
-                currentAction.crossFadeTo(idleAction.reset().play(), 0.5);
-                currentAction = idleAction;
-            }
-            controlButton.disabled = false;
-            controlButton.textContent = '▶';
-        });
-
-        // -- Event listener for the main control button (record/stop) --
-        controlButton.addEventListener('click', () => {
-            if (isRecording) { stopRecording(); } 
-            else { startRecording(); }
-        });
-
-        // -- Start the application --
         init();
-
     </script>
 </body>
 </html>
