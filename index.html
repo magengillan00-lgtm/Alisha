@@ -3,34 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Alicia AI Ultimate</title>
+<title>Alicia Ultra</title>
 
 <style>
-body { margin:0; overflow:hidden; background:#111; font-family:sans-serif; }
-canvas { width:100vw; height:100vh; display:block; }
+body { margin:0; overflow:hidden; background:#111; font-family:sans-serif;}
+canvas { display:block; }
 
-#controls {
+#controls{
 position:fixed; bottom:20px; left:50%;
 transform:translateX(-50%);
 display:flex; width:90%; max-width:500px;
 }
 
-#msg {
+#msg{
 flex:1; padding:12px; border-radius:20px;
 border:none; background:#222; color:white;
 }
 
-#send {
+#send{
 width:60px; border:none; border-radius:50%;
-background:#3498db; color:white; font-size:20px;
+background:#ff4d6d; color:white; font-size:20px;
 }
 
-#bubble {
-position:fixed; top:50px; left:50%;
+#bubble{
+position:fixed; top:40px; left:50%;
 transform:translateX(-50%);
-background:#000a; color:white;
+background:#000c; color:white;
 padding:15px; border-radius:20px;
-display:none;
+max-width:80%;
+text-align:center;
 }
 </style>
 </head>
@@ -40,7 +41,7 @@ display:none;
 <div id="bubble"></div>
 
 <div id="controls">
-<input id="msg" placeholder="Type or speak...">
+<input id="msg" placeholder="Speak or type...">
 <button id="send">🎤</button>
 </div>
 
@@ -57,85 +58,109 @@ display:none;
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 
-let OR_KEY = "";
-let MEMORY = [];
-let state = "idle";
+// 🔑 ضع مفتاحك هنا
+let OR_KEY = "PUT_YOUR_KEY_HERE";
 
-let scene, camera, renderer, clock, vrm;
+let scene = new THREE.Scene();
+let clock = new THREE.Clock();
+let camera = new THREE.PerspectiveCamera(35, innerWidth/innerHeight, 0.1,100);
+camera.position.set(0,1.4,0.6);
 
-const msg = document.getElementById("msg");
-const btn = document.getElementById("send");
-const bubble = document.getElementById("bubble");
-
-// ================= INIT =================
-scene = new THREE.Scene();
-clock = new THREE.Clock();
-
-camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1,100);
-camera.position.set(0,1.5,0.6);
-
-renderer = new THREE.WebGLRenderer({alpha:true});
+let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-new OrbitControls(camera, renderer.domElement);
-
-const light = new THREE.DirectionalLight(0xffffff,1);
+// 💡 إضاءة
+let light = new THREE.DirectionalLight(0xffffff,1);
 light.position.set(1,2,3);
 scene.add(light);
 
-// ================= LOAD MODEL =================
-const loader = new GLTFLoader();
+// 🧠 ذاكرة
+let MEMORY = [];
+
+// 🎭 حالة
+let state = "idle";
+
+// 📦 تحميل VRM
+let loader = new GLTFLoader();
 loader.register(parser=>new VRMLoaderPlugin(parser));
 
-loader.load("./assets/models/waifu.vrm", gltf=>{
+let vrm;
+
+loader.load("./assets/models/waifu.vrm",(gltf)=>{
 vrm = gltf.userData.vrm;
+vrm.scene.rotation.y = Math.PI;
 scene.add(vrm.scene);
 });
 
-// ================= ANIMATION =================
+// 🎮 أنيميشن
 function animate(){
 requestAnimationFrame(animate);
 
 if(vrm){
-const t = Date.now()*0.002;
+let t = Date.now()*0.002;
 
-const head = vrm.humanoid.getBoneNode('head');
-const l = vrm.humanoid.getBoneNode('leftUpperArm');
-const r = vrm.humanoid.getBoneNode('rightUpperArm');
+// 👀 تتبع الكاميرا
+let head = vrm.humanoid.getBoneNode('head');
+if(head){
+head.lookAt(camera.position);
+}
+
+// 🎭 تعابير
+if(vrm.expressionManager){
+
+// reset
+vrm.expressionManager.setValue('happy',0);
+vrm.expressionManager.setValue('angry',0);
+vrm.expressionManager.setValue('sad',0);
+vrm.expressionManager.setValue('relaxed',0);
 
 if(state==="idle"){
-if(head) head.rotation.y=Math.sin(t)*0.05;
+vrm.expressionManager.setValue('relaxed',0.4);
 }
 
 if(state==="talk"){
-if(head) head.rotation.y=Math.sin(t)*0.2;
-if(l) l.rotation.z=Math.sin(t)*0.3;
-if(r) r.rotation.z=-Math.sin(t)*0.3;
+vrm.expressionManager.setValue('happy',0.6);
 }
 
-if(state==="wave"){
-if(r) r.rotation.z=Math.sin(t*3)*0.8;
+if(state==="angry"){
+vrm.expressionManager.setValue('angry',0.8);
 }
+
+if(state==="love"){
+vrm.expressionManager.setValue('happy',1);
+vrm.expressionManager.setValue('blush',0.7);
+}
+}
+
+// 👋 wave
+let rightArm = vrm.humanoid.getBoneNode('rightUpperArm');
+
+if(state==="wave" && rightArm){
+rightArm.rotation.z = -1;
+rightArm.rotation.x = Math.sin(t*5)*0.5;
+}
+
+vrm.update(clock.getDelta());
 }
 
 renderer.render(scene,camera);
 }
 animate();
 
-// ================= LIP SYNC =================
+// 🗣️ كلام
 let lip;
 
 function startTalk(){
 state="talk";
-lip=setInterval(()=>{
+
+lip = setInterval(()=>{
 if(vrm?.expressionManager){
 vrm.expressionManager.setValue('aa', Math.random()*0.5);
 }
-},120);
+},100);
 }
 
 function stopTalk(){
@@ -146,29 +171,21 @@ vrm.expressionManager.setValue('aa',0);
 }
 }
 
-// ================= EMOTION =================
-function emotion(text){
-if(text.includes("love")) return "happy";
-if(text.includes("angry")) return "angry";
-return "neutral";
+// 🧠 تحليل المشاعر
+function detectEmotion(text){
+if(text.includes("احب") || text.includes("love")) return "love";
+if(text.includes("اكره") || text.includes("غبي")) return "angry";
+return "talk";
 }
 
-function applyEmotion(e){
-if(!vrm?.expressionManager) return;
-
-vrm.expressionManager.setValue('happy',0);
-vrm.expressionManager.setValue('angry',0);
-
-if(e==="happy") vrm.expressionManager.setValue('happy',1);
-if(e==="angry") vrm.expressionManager.setValue('angry',1);
-}
-
-// ================= AI =================
+// 🤖 AI
 async function ask(text){
+
+state = detectEmotion(text);
 
 show("Thinking...");
 
-const res = await fetch("https://openrouter.ai/api/v1/chat/completions",{
+let res = await fetch("https://openrouter.ai/api/v1/chat/completions",{
 method:"POST",
 headers:{
 "Authorization":"Bearer "+OR_KEY,
@@ -177,41 +194,51 @@ headers:{
 body:JSON.stringify({
 model:"google/gemini-2.0-flash-001",
 messages:[
+{role:"system",content:"رد بالياباني وبأسلوب أنمي لطيف"},
 ...MEMORY,
 {role:"user",content:text}
 ]
 })
 });
 
-const data = await res.json();
-const reply = data.choices[0].message.content;
+let data = await res.json();
 
+if(!data.choices){
+show("API Error");
+return;
+}
+
+let reply = data.choices[0].message.content;
+
+// 🧠 حفظ ذاكرة
 MEMORY.push({role:"user",content:text});
 MEMORY.push({role:"assistant",content:reply});
 
-if(MEMORY.length>20) MEMORY=MEMORY.slice(-20);
+if(MEMORY.length>30) MEMORY = MEMORY.slice(-30);
 
-applyEmotion(emotion(reply));
 speak(reply);
 show(reply);
 }
 
-// ================= SPEAK =================
+// 🔊 صوت
 function speak(t){
-const u = new SpeechSynthesisUtterance(t);
+let u = new SpeechSynthesisUtterance(t);
 u.lang="ja-JP";
 
 u.onstart=startTalk;
-u.onend=stopTalk;
+u.onend=()=>state="idle";
 
 speechSynthesis.speak(u);
 }
 
-// ================= UI =================
+// 💬 واجهة
+let msg = document.getElementById("msg");
+let btn = document.getElementById("send");
+let bubble = document.getElementById("bubble");
+
 function show(t){
 bubble.innerText=t;
-bubble.style.display="block";
-setTimeout(()=>bubble.style.display="none",5000);
+setTimeout(()=>bubble.innerText="",5000);
 }
 
 msg.addEventListener("input",()=>{
@@ -227,11 +254,11 @@ recognition.start();
 }
 };
 
-// ================= MIC =================
-const recognition = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+// 🎤 مايك
+let recognition = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
 recognition.lang="ar";
 
-recognition.onresult=e=>{
+recognition.onresult=(e)=>{
 msg.value = e.results[0][0].transcript;
 };
 
