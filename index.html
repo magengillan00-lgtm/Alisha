@@ -141,6 +141,16 @@
             transition: 0.3s;
         }
 
+        #alicia-send.recording {
+            background: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
         #alicia-bubble {
             position: fixed;
             top: 100px;
@@ -157,6 +167,15 @@
             z-index: 100;
             backdrop-filter: blur(5px);
             border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #status-indicator {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #3498db;
+            font-size: 12px;
+            z-index: 50;
         }
     </style>
 </head>
@@ -176,6 +195,7 @@
         </div>
     </div>
 
+    <div id="status-indicator"></div>
     <div id="alicia-bubble"></div>
 
     <div id="alicia-controls">
@@ -217,6 +237,45 @@
         const apiKeyOverlay = document.getElementById('api-key-overlay');
         const apiKeyInput = document.getElementById('api-key-input');
         const apiKeySubmit = document.getElementById('api-key-submit');
+        const statusIndicator = document.getElementById('status-indicator');
+
+        // Speech Recognition Setup
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-SA'; // Arabic
+            recognition.continuous = false;
+            recognition.interimResults = true;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                sendBtn.classList.add('recording');
+                statusIndicator.textContent = '🎤 Listening...';
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                msgInput.value = transcript;
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                sendBtn.classList.remove('recording');
+                statusIndicator.textContent = '';
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                statusIndicator.textContent = '❌ Mic Error';
+                setTimeout(() => { statusIndicator.textContent = ''; }, 2000);
+            };
+        }
 
         if (OR_KEY) {
             apiKeyOverlay.style.display = 'none';
@@ -248,9 +307,9 @@
             scene = new THREE.Scene();
             clock = new THREE.Clock();
 
-            camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
-            // Position camera to focus on upper body and center the avatar
-            camera.position.set(0, 1.4, 1.2);
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            // Position camera very close to face for close-up view
+            camera.position.set(0, 1.5, 0.5);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -259,14 +318,15 @@
             document.body.appendChild(renderer.domElement);
 
             controls = new OrbitControls(camera, renderer.domElement);
-            // Target the chest/head area to keep it centered
-            controls.target.set(0, 1.3, 0);
+            // Target the face area
+            controls.target.set(0, 1.5, 0);
             controls.enableDamping = true;
-            // Disable panning to keep avatar centered
+            controls.dampingFactor = 0.05;
+            
+            // Disable all rotation and panning - keep avatar completely fixed
+            controls.enableRotate = false;
             controls.enablePan = false;
-            // Limit zoom if desired, or keep it as requested (only zoom allowed)
-            controls.minDistance = 0.5;
-            controls.maxDistance = 5;
+            controls.enableZoom = false;
             controls.update();
 
             new RGBELoader().load('./assets/backgrounds/background.hdr', function (texture) {
@@ -275,7 +335,7 @@
                 scene.environment = texture;
             }, undefined, (err) => console.warn("Background HDR not found, using default lighting."));
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
             const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
             dirLight.position.set(1, 2, 3);
@@ -421,21 +481,58 @@
         let lipSyncInterval;
         function startLipSync() {
             lipSyncInterval = setInterval(() => {
-                if (currentVrm) currentVrm.expressionManager.setValue('aa', 0.5 + Math.random() * 0.5);
+                if (currentVrm && currentVrm.expressionManager) {
+                    // Enhanced lip sync with multiple expressions
+                    const mouthOpen = 0.5 + Math.random() * 0.5;
+                    const noseWrinkle = Math.random() * 0.3;
+                    
+                    currentVrm.expressionManager.setValue('aa', mouthOpen);
+                    currentVrm.expressionManager.setValue('ih', mouthOpen * 0.3);
+                    currentVrm.expressionManager.setValue('ou', mouthOpen * 0.2);
+                    
+                    // Nose movement
+                    if (currentVrm.expressionManager.getValue('noseWrinkle') !== undefined) {
+                        currentVrm.expressionManager.setValue('noseWrinkle', noseWrinkle);
+                    }
+                }
             }, 100);
         }
 
         function stopLipSync() {
             clearInterval(lipSyncInterval);
-            if (currentVrm) currentVrm.expressionManager.setValue('aa', 0);
+            if (currentVrm && currentVrm.expressionManager) {
+                currentVrm.expressionManager.setValue('aa', 0);
+                currentVrm.expressionManager.setValue('ih', 0);
+                currentVrm.expressionManager.setValue('ou', 0);
+                if (currentVrm.expressionManager.getValue('noseWrinkle') !== undefined) {
+                    currentVrm.expressionManager.setValue('noseWrinkle', 0);
+                }
+            }
         }
 
         sendBtn.addEventListener('click', () => {
-            const val = msgInput.value.trim();
-            if (val) { askAlicia(val); msgInput.value = ''; }
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                const val = msgInput.value.trim();
+                if (val) {
+                    askAlicia(val);
+                    msgInput.value = '';
+                } else if (recognition) {
+                    recognition.start();
+                }
+            }
         });
 
-        msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+        msgInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const val = msgInput.value.trim();
+                if (val) {
+                    askAlicia(val);
+                    msgInput.value = '';
+                }
+            }
+        });
 
         function animate() {
             requestAnimationFrame(animate);
