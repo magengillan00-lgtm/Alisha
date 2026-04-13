@@ -215,21 +215,21 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
         import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
         let OR_KEY = localStorage.getItem('alicia_or_key') || "";
-        const SYSTEM_PROMPT = `أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي. 
+        let SYSTEM_PROMPT = `أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي. 
         يجب أن تكون جميع ردودك باللغة اليابانية فقط، حتى لو سألك المستخدم بالعربية. 
         اجعلي الردود قصيرة ومرحة. 
         معلومات إضافية: اسم المستخدم هو غيلان بن عقبة، ويلقب بـ ميجن غيلان أو الملك الأحمر.`;
 
-        let scene, camera, renderer, clock, mixer, currentVrm, controls;
-        const animationsMap = new Map();
-        let idleAction, currentAction;
-        const talkingAnimationNames = ['./assets/animations/anim_1.fbx', './assets/animations/anim_2.fbx', './assets/animations/anim_3.fbx'];
+        let scene, camera, renderer, clock, currentVrm;
+        // Get token from localStorage or use public access
+        const GITHUB_TOKEN = localStorage.getItem('github_token') || "";
+        const GITHUB_USER = "magengillan00-lgtm";
+        const GITHUB_REPO = "Alisha";
 
         const msgInput = document.getElementById('alicia-msg');
         const sendBtn = document.getElementById('alicia-send');
@@ -290,18 +290,53 @@
             }
         });
 
-        const mixamoVRMRigMap = {
-            mixamorigHips: 'hips', mixamorigSpine: 'spine', mixamorigSpine1: 'chest',
-            mixamorigSpine2: 'upperChest', mixamorigNeck: 'neck', mixamorigHead: 'head',
-            mixamorigLeftShoulder: 'leftShoulder', mixamorigLeftArm: 'leftUpperArm',
-            mixamorigLeftForeArm: 'leftLowerArm', mixamorigLeftHand: 'leftHand',
-            mixamorigRightShoulder: 'rightShoulder', mixamorigRightArm: 'rightUpperArm',
-            mixamorigRightForeArm: 'rightLowerArm', mixamorigRightHand: 'rightHand',
-            mixamorigLeftUpLeg: 'leftUpperLeg', mixamorigLeftLeg: 'leftLowerLeg',
-            mixamorigLeftFoot: 'leftFoot', mixamorigLeftToeBase: 'leftToes',
-            mixamorigRightUpLeg: 'rightUpperLeg', mixamorigRightLeg: 'rightLowerLeg',
-            mixamorigRightFoot: 'rightFoot', mixamorigRightToeBase: 'rightToes',
-        };
+        // Load memory and skills from GitHub
+        async function loadMemoryAndSkills() {
+            try {
+                // Load memory.json
+                const headers = GITHUB_TOKEN ? { 'Authorization': `token ${GITHUB_TOKEN}` } : {};
+                const memoryResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/memory.json`,
+                    { headers }
+                );
+                
+                if (memoryResponse.ok) {
+                    const memoryData = await memoryResponse.json();
+                    const memoryContent = JSON.parse(atob(memoryData.content));
+                    console.log('Memory loaded:', memoryContent);
+                    
+                    // Add memory to system prompt
+                    if (memoryContent.commands && Array.isArray(memoryContent.commands)) {
+                        const memoryText = memoryContent.commands.join('\n');
+                        SYSTEM_PROMPT += `\n\nالأوامر المحفوظة:\n${memoryText}`;
+                    }
+                }
+
+                // Load skills from /skills directory
+                const skillsResponse = await fetch(
+                    `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/skills`,
+                    { headers }
+                );
+
+                if (skillsResponse.ok) {
+                    const skillsList = await skillsResponse.json();
+                    if (Array.isArray(skillsList)) {
+                        const skillNames = skillsList
+                            .filter(item => item.type === 'dir')
+                            .map(item => item.name)
+                            .join(', ');
+                        
+                        if (skillNames) {
+                            SYSTEM_PROMPT += `\n\nالمهارات المتاحة: ${skillNames}`;
+                        }
+                    }
+                }
+
+                console.log('Updated System Prompt:', SYSTEM_PROMPT);
+            } catch (error) {
+                console.warn('Could not load memory/skills:', error);
+            }
+        }
 
         function init() {
             scene = new THREE.Scene();
@@ -317,7 +352,7 @@
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             document.body.appendChild(renderer.domElement);
 
-            controls = new OrbitControls(camera, renderer.domElement);
+            const controls = new OrbitControls(camera, renderer.domElement);
             // Target the face area
             controls.target.set(0, 1.5, 0);
             controls.enableDamping = true;
@@ -361,84 +396,14 @@
                 currentVrm = gltf.userData.vrm;
                 scene.add(currentVrm.scene);
                 VRMUtils.rotateVRM0(currentVrm);
-                mixer = new THREE.AnimationMixer(currentVrm.scene);
                 
-                await preloadAnimations();
+                // Load memory and skills after VRM is loaded
+                await loadMemoryAndSkills();
+                
                 document.getElementById('loading-overlay').classList.add('hidden');
             } catch (error) {
                 console.error('VRM Load Error:', error);
                 document.getElementById('loading-text').innerText = "Error loading Alicia.";
-            }
-        }
-
-        async function loadMixamoAnimation(url, vrm) {
-            const loader = new FBXLoader();
-            const asset = await loader.loadAsync(url);
-            const clip = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com');
-            const tracks = [];
-            const restRotationInverse = new THREE.Quaternion();
-            const parentRestWorldRotation = new THREE.Quaternion();
-            const _quatA = new THREE.Quaternion();
-            const motionHipsHeight = asset.getObjectByName('mixamorigHips').position.y;
-            const vrmHipsHeight = vrm.humanoid.getNormalizedBoneNode('hips').position.y;
-            const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
-
-            clip.tracks.forEach((track) => {
-                const trackSplitted = track.name.split('.');
-                const mixamoRigName = trackSplitted[0];
-                const vrmBoneName = mixamoVRMRigMap[mixamoRigName];
-                const vrmNodeName = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName)?.name;
-                if (vrmNodeName != null) {
-                    const propertyName = trackSplitted[1];
-                    const mixamoRigNode = asset.getObjectByName(mixamoRigName);
-                    mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
-                    mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);
-                    if (track instanceof THREE.QuaternionKeyframeTrack) {
-                        for (let i = 0; i < track.values.length; i += 4) {
-                            const flatQuaternion = track.values.slice(i, i + 4);
-                            _quatA.fromArray(flatQuaternion).premultiply(parentRestWorldRotation).multiply(restRotationInverse).toArray(flatQuaternion);
-                            flatQuaternion.forEach((v, index) => { track.values[index + i] = v; });
-                        }
-                        tracks.push(new THREE.QuaternionKeyframeTrack(`${vrmNodeName}.${propertyName}`, track.times, track.values));
-                    } else if (track instanceof THREE.VectorKeyframeTrack) {
-                        const value = track.values.map((v, i) => v * hipsPositionScale);
-                        tracks.push(new THREE.VectorKeyframeTrack(`${vrmNodeName}.${propertyName}`, track.times, value));
-                    }
-                }
-            });
-            return new THREE.AnimationClip(clip.name, clip.duration, tracks);
-        }
-
-        async function preloadAnimations() {
-            const anims = ['./assets/animations/idle.fbx', ...talkingAnimationNames];
-            for (const path of anims) {
-                try {
-                    const name = path.split('/').pop().replace('.fbx', '');
-                    const clip = await loadMixamoAnimation(path, currentVrm);
-                    clip.name = name;
-                    animationsMap.set(name, clip);
-                    if (name === 'idle') {
-                        idleAction = mixer.clipAction(clip);
-                        idleAction.play();
-                        currentAction = idleAction;
-                    }
-                } catch (e) { console.warn("Failed to load animation:", path); }
-            }
-        }
-
-        function playRandomTalkingAnimation() {
-            const names = talkingAnimationNames.map(n => n.split('/').pop().replace('.fbx', ''));
-            const nextName = names[Math.floor(Math.random() * names.length)];
-            const nextClip = animationsMap.get(nextName);
-            if (nextClip && currentAction) {
-                const nextAction = mixer.clipAction(nextClip);
-                nextAction.reset().setLoop(THREE.LoopOnce, 1).play();
-                currentAction.crossFadeTo(nextAction, 0.5);
-                currentAction = nextAction;
-                mixer.addEventListener('finished', () => {
-                    nextAction.crossFadeTo(idleAction.reset().play(), 0.5);
-                    currentAction = idleAction;
-                }, { once: true });
             }
         }
 
@@ -473,7 +438,7 @@
         function speakJapanese(text) {
             const ut = new SpeechSynthesisUtterance(text);
             ut.lang = 'ja-JP';
-            ut.onstart = () => { startLipSync(); playRandomTalkingAnimation(); };
+            ut.onstart = () => { startLipSync(); };
             ut.onend = () => { stopLipSync(); };
             window.speechSynthesis.speak(ut);
         }
@@ -483,19 +448,20 @@
             lipSyncInterval = setInterval(() => {
                 if (currentVrm && currentVrm.expressionManager) {
                     // Enhanced lip sync with multiple expressions
-                    const mouthOpen = 0.5 + Math.random() * 0.5;
-                    const noseWrinkle = Math.random() * 0.3;
+                    const mouthOpen = 0.6 + Math.random() * 0.4;
+                    const mouthSmile = Math.random() * 0.3;
                     
                     currentVrm.expressionManager.setValue('aa', mouthOpen);
-                    currentVrm.expressionManager.setValue('ih', mouthOpen * 0.3);
-                    currentVrm.expressionManager.setValue('ou', mouthOpen * 0.2);
+                    currentVrm.expressionManager.setValue('ih', mouthOpen * 0.4);
+                    currentVrm.expressionManager.setValue('ou', mouthOpen * 0.3);
+                    currentVrm.expressionManager.setValue('ee', mouthOpen * 0.2);
                     
-                    // Nose movement
-                    if (currentVrm.expressionManager.getValue('noseWrinkle') !== undefined) {
-                        currentVrm.expressionManager.setValue('noseWrinkle', noseWrinkle);
+                    // Smile during speech
+                    if (currentVrm.expressionManager.getValue('smile') !== undefined) {
+                        currentVrm.expressionManager.setValue('smile', mouthSmile);
                     }
                 }
-            }, 100);
+            }, 80);
         }
 
         function stopLipSync() {
@@ -504,8 +470,9 @@
                 currentVrm.expressionManager.setValue('aa', 0);
                 currentVrm.expressionManager.setValue('ih', 0);
                 currentVrm.expressionManager.setValue('ou', 0);
-                if (currentVrm.expressionManager.getValue('noseWrinkle') !== undefined) {
-                    currentVrm.expressionManager.setValue('noseWrinkle', 0);
+                currentVrm.expressionManager.setValue('ee', 0);
+                if (currentVrm.expressionManager.getValue('smile') !== undefined) {
+                    currentVrm.expressionManager.setValue('smile', 0);
                 }
             }
         }
@@ -537,9 +504,7 @@
         function animate() {
             requestAnimationFrame(animate);
             const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
             if (currentVrm) currentVrm.update(delta);
-            if (controls) controls.update();
             renderer.render(scene, camera);
         }
 
