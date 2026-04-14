@@ -1,274 +1,621 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Alicia Ultra</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Alicia AI - Live2D Avatar</title>
 
-<style>
-body { margin:0; overflow:hidden; background:#111; font-family:sans-serif;}
-canvas { display:block; }
+    <!-- Pixi.js v7 + Live2D Cubism SDK -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
 
-#controls{
-position:fixed; bottom:20px; left:50%;
-transform:translateX(-50%);
-display:flex; width:90%; max-width:500px;
-}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-#msg{
-flex:1; padding:12px; border-radius:20px;
-border:none; background:#222; color:white;
-}
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: none;
+        }
 
-#send{
-width:60px; border:none; border-radius:50%;
-background:#ff4d6d; color:white; font-size:20px;
-}
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
 
-#bubble{
-position:fixed; top:40px; left:50%;
-transform:translateX(-50%);
-background:#000c; color:white;
-padding:15px; border-radius:20px;
-max-width:80%;
-text-align:center;
-}
-</style>
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(15, 12, 41, 0.98);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            color: white;
+            opacity: 1;
+            transition: opacity 0.8s ease-in-out;
+        }
+
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 60px; height: 60px;
+            border: 6px solid rgba(255,255,255,0.2);
+            border-top: 6px solid #ff6b9d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            font-size: 16px;
+            color: #ddd;
+        }
+
+        /* Speech Bubble */
+        #speech-bubble {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 14px 24px;
+            border-radius: 20px;
+            max-width: 80%;
+            min-width: 200px;
+            text-align: center;
+            font-size: 16px;
+            line-height: 1.6;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            border: 1px solid rgba(255, 107, 157, 0.3);
+        }
+
+        #speech-bubble.visible {
+            opacity: 1;
+        }
+
+        /* Controls Area */
+        #controls-area {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            z-index: 10;
+        }
+
+        #text-input {
+            width: 280px;
+            padding: 14px 20px;
+            border-radius: 25px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            color: white;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        #text-input:focus {
+            border-color: #ff6b9d;
+        }
+
+        #text-input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+
+        .ctrl-btn {
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.3);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ctrl-btn:hover {
+            background: rgba(255, 107, 157, 0.3);
+            border-color: #ff6b9d;
+            transform: scale(1.05);
+        }
+
+        .ctrl-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .ctrl-btn.recording {
+            background: rgba(255, 0, 0, 0.7);
+            border-color: #ff4444;
+            animation: pulse-record 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-record {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.5); }
+            50% { box-shadow: 0 0 0 12px rgba(255, 0, 0, 0); }
+        }
+
+        /* Status */
+        #status-bar {
+            position: fixed;
+            bottom: 95px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+            z-index: 10;
+            background: rgba(0,0,0,0.4);
+            padding: 5px 14px;
+            border-radius: 12px;
+        }
+
+        /* Title */
+        #title-badge {
+            position: fixed;
+            top: 15px;
+            right: 20px;
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+            z-index: 10;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 12px;
+            border-radius: 10px;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 600px) {
+            #text-input { width: 200px; font-size: 14px; padding: 12px 16px; }
+            .ctrl-btn { width: 45px; height: 45px; font-size: 18px; }
+            #speech-bubble { font-size: 14px; max-width: 90%; padding: 10px 18px; }
+        }
+    </style>
 </head>
-
 <body>
 
-<div id="bubble"></div>
+    <div id="title-badge">Alicia AI - Live2D</div>
 
-<div id="controls">
-<input id="msg" placeholder="Speak or type...">
-<button id="send">🎤</button>
-</div>
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">Loading Alicia Live2D Model...</p>
+    </div>
 
-<script type="importmap">
-{
-"imports": {
-"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-"@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.1.0/lib/three-vrm.module.min.js"
-}
-}
-</script>
+    <div id="speech-bubble"></div>
 
-<script type="module">
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin } from '@pixiv/three-vrm';
+    <div id="status-bar">Ready</div>
 
-// 🔑 ضع مفتاحك هنا
-let OR_KEY = "PUT_YOUR_KEY_HERE";
+    <div id="canvas-container"></div>
 
-let scene = new THREE.Scene();
-let clock = new THREE.Clock();
-let camera = new THREE.PerspectiveCamera(35, innerWidth/innerHeight, 0.1,100);
-camera.position.set(0,1.4,0.6);
+    <div id="controls-area">
+        <input id="text-input" type="text" placeholder="Type a message..." autocomplete="off" />
+        <button class="ctrl-btn" id="mic-btn" title="Voice Input">&#127908;</button>
+        <button class="ctrl-btn" id="send-btn" title="Send">&#10148;</button>
+    </div>
 
-let renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+    <script>
+    (async function() {
+        // ==================== CONFIGURATION ====================
+        const MODEL_PATH = './models/kei_vowels_pro/kei_vowels_pro.model3.json';
+        const GEMINI_API_KEY = "AIzaSyBam_QaB2ogtvxiqCEkKMGwdqHSkNdqUdE";
+        const SYSTEM_PROMPT = "أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي. ردي دائماً باختصار وبأسلوب مرح باللغة العربية. يجب ألا تتجاوز إجابتك جملتين.";
 
-// 💡 إضاءة
-let light = new THREE.DirectionalLight(0xffffff,1);
-light.position.set(1,2,3);
-scene.add(light);
+        // ==================== DOM ELEMENTS ====================
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const speechBubble = document.getElementById('speech-bubble');
+        const statusText = document.getElementById('status-bar');
+        const textInput = document.getElementById('text-input');
+        const micBtn = document.getElementById('mic-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const canvasContainer = document.getElementById('canvas-container');
 
-// 🧠 ذاكرة
-let MEMORY = [];
+        // ==================== LIVE2D SETUP ====================
+        let app, model;
+        let isSpeaking = false;
+        let lipSyncInterval = null;
+        let currentMotion = null;
 
-// 🎭 حالة
-let state = "idle";
+        async function initLive2D() {
+            try {
+                loadingText.textContent = 'Initializing Live2D Engine...';
 
-// 📦 تحميل VRM
-let loader = new GLTFLoader();
-loader.register(parser=>new VRMLoaderPlugin(parser));
+                // Create PIXI Application
+                app = new PIXI.Application({
+                    resizeTo: window,
+                    backgroundAlpha: 0,
+                    antialias: true,
+                    resolution: window.devicePixelRatio || 1,
+                    autoDensity: true,
+                });
+                canvasContainer.appendChild(app.view);
 
-let vrm;
+                // Configure Live2D
+                PIXI.live2d.Live2DModel.registerTicker(app.ticker);
 
-loader.load("./assets/models/waifu.vrm",(gltf)=>{
-vrm = gltf.userData.vrm;
-vrm.scene.rotation.y = Math.PI;
-scene.add(vrm.scene);
-});
+                loadingText.textContent = 'Loading Alicia model...';
 
-// 🎮 أنيميشن
-function animate(){
-requestAnimationFrame(animate);
+                // Load the model
+                model = await PIXI.live2d.Live2DModel.from(MODEL_PATH, {
+                    autoInteract: true,
+                    autoUpdate: true,
+                    autoFocus: true,
+                });
 
-if(vrm){
-let t = Date.now()*0.002;
+                // Scale and position the model
+                const scaleX = window.innerWidth / model.width * 0.8;
+                const scaleY = window.innerHeight / model.height * 0.9;
+                const scale = Math.min(scaleX, scaleY);
+                model.scale.set(scale);
 
-// 👀 تتبع الكاميرا
-let head = vrm.humanoid.getBoneNode('head');
-if(head){
-head.lookAt(camera.position);
-}
+                model.anchor.set(0.5, 0.5);
+                model.x = app.screen.width / 2;
+                model.y = app.screen.height / 2 + 50;
 
-// 🎭 تعابير
-if(vrm.expressionManager){
+                app.stage.addChild(model);
 
-// reset
-vrm.expressionManager.setValue('happy',0);
-vrm.expressionManager.setValue('angry',0);
-vrm.expressionManager.setValue('sad',0);
-vrm.expressionManager.setValue('relaxed',0);
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    const scaleX = window.innerWidth / (model.internalModel.originalWidth || model.width) * 0.8;
+                    const scaleY = window.innerHeight / (model.internalModel.originalHeight || model.height) * 0.9;
+                    const s = Math.min(scaleX, scaleY);
+                    model.scale.set(s);
+                    model.x = app.screen.width / 2;
+                    model.y = app.screen.height / 2 + 50;
+                });
 
-if(state==="idle"){
-vrm.expressionManager.setValue('relaxed',0.4);
-}
+                // Enable interaction (mouse tracking)
+                model.on('hit', (hitAreas) => {
+                    if (hitAreas.includes('Head')) {
+                        playRandomMotion();
+                        showBubble('أهلاً! أنا أليشيا 💕');
+                    }
+                });
 
-if(state==="talk"){
-vrm.expressionManager.setValue('happy',0.6);
-}
+                // Start idle motion
+                setTimeout(() => {
+                    playIdleMotion();
+                    hideLoading();
+                }, 1500);
 
-if(state==="angry"){
-vrm.expressionManager.setValue('angry',0.8);
-}
+                // Add subtle breathing/idle animation
+                startIdleAnimation();
 
-if(state==="love"){
-vrm.expressionManager.setValue('happy',1);
-vrm.expressionManager.setValue('blush',0.7);
-}
-}
+            } catch (error) {
+                console.error('Live2D Error:', error);
+                loadingText.textContent = 'Error loading model: ' + error.message;
+            }
+        }
 
-// 👋 wave
-let rightArm = vrm.humanoid.getBoneNode('rightUpperArm');
+        function startIdleAnimation() {
+            // The physics engine handles idle animation automatically
+            // We add periodic motion switching for liveliness
+            setInterval(() => {
+                if (!isSpeaking && model) {
+                    // Subtle random motion for liveliness
+                    if (Math.random() > 0.6) {
+                        playIdleMotion();
+                    }
+                }
+            }, 8000);
+        }
 
-if(state==="wave" && rightArm){
-rightArm.rotation.z = -1;
-rightArm.rotation.x = Math.sin(t*5)*0.5;
-}
+        function playIdleMotion() {
+            if (!model) return;
+            try {
+                model.motion('Idle');
+            } catch(e) {
+                // No idle group, try playing a random available motion
+                playRandomMotion();
+            }
+        }
 
-vrm.update(clock.getDelta());
-}
+        function playRandomMotion() {
+            if (!model) return;
+            try {
+                // Play motions from the default group
+                model.motion('');
+            } catch(e) {
+                console.log('No motions available');
+            }
+        }
 
-renderer.render(scene,camera);
-}
-animate();
+        function playTalkMotion() {
+            if (!model) return;
+            try {
+                model.motion('');
+            } catch(e) {
+                // No talk-specific motion
+            }
+        }
 
-// 🗣️ كلام
-let lip;
+        // ==================== LIP SYNC ====================
+        function startLipSync() {
+            isSpeaking = true;
+            let t = 0;
 
-function startTalk(){
-state="talk";
+            lipSyncInterval = setInterval(() => {
+                if (!isSpeaking) return;
+                t += 0.15;
 
-lip = setInterval(()=>{
-if(vrm?.expressionManager){
-vrm.expressionManager.setValue('aa', Math.random()*0.5);
-}
-},100);
-}
+                // Simulate natural mouth movement with varying amplitudes
+                const mouthOpen = 0.3 + Math.random() * 0.5;
+                const mouthForm = Math.sin(t) * 0.3;
 
-function stopTalk(){
-state="idle";
-clearInterval(lip);
-if(vrm?.expressionManager){
-vrm.expressionManager.setValue('aa',0);
-}
-}
+                try {
+                    // Set mouth open parameter (primary lip sync)
+                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
 
-// 🧠 تحليل المشاعر
-function detectEmotion(text){
-if(text.includes("احب") || text.includes("love")) return "love";
-if(text.includes("اكره") || text.includes("غبي")) return "angry";
-return "talk";
-}
+                    // Vowel-based mouth shapes for more natural look
+                    // Cycle through vowels: A, I, U, E, O
+                    const vowelPhase = (t * 2) % 5;
+                    const vowels = [
+                        { id: 'ParamA', base: 1.0 },   // A - mouth wide open
+                        { id: 'ParamI', base: 0.3 },   // I - mouth stretched horizontally
+                        { id: 'ParamU', base: 0.2 },   // U - mouth rounded
+                        { id: 'ParamE', base: 0.6 },   // E - mouth stretched
+                        { id: 'ParamO', base: 0.8 },   // O - mouth rounded wide
+                    ];
 
-// 🤖 AI
-async function ask(text){
+                    const activeVowel = Math.floor(vowelPhase);
+                    const blendFactor = vowelPhase - activeVowel;
+                    const nextVowel = (activeVowel + 1) % 5;
 
-state = detectEmotion(text);
+                    // Reset all vowel params
+                    vowels.forEach(v => {
+                        model.internalModel.coreModel.setParameterValueById(v.id, 0);
+                    });
 
-show("Thinking...");
+                    // Set active vowel with blending
+                    const activeVal = 1.0 - blendFactor;
+                    const nextVal = blendFactor;
 
-let res = await fetch("https://openrouter.ai/api/v1/chat/completions",{
-method:"POST",
-headers:{
-"Authorization":"Bearer "+OR_KEY,
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-model:"google/gemini-2.0-flash-001",
-messages:[
-{role:"system",content:"رد بالياباني وبأسلوب أنمي لطيف"},
-...MEMORY,
-{role:"user",content:text}
-]
-})
-});
+                    model.internalModel.coreModel.setParameterValueById(
+                        vowels[activeVowel].id,
+                        mouthOpen * activeVal
+                    );
+                    model.internalModel.coreModel.setParameterValueById(
+                        vowels[nextVowel].id,
+                        mouthOpen * nextVal * 0.5
+                    );
 
-let data = await res.json();
+                    // Keep mouth open
+                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
 
-if(!data.choices){
-show("API Error");
-return;
-}
+                } catch (e) {
+                    // Model parameter not found - fallback to basic mouth
+                    try {
+                        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                    } catch(e2) {}
+                }
+            }, 80); // 80ms interval for smooth animation (~12.5 fps mouth movement)
+        }
 
-let reply = data.choices[0].message.content;
+        function stopLipSync() {
+            isSpeaking = false;
+            if (lipSyncInterval) {
+                clearInterval(lipSyncInterval);
+                lipSyncInterval = null;
+            }
 
-// 🧠 حفظ ذاكرة
-MEMORY.push({role:"user",content:text});
-MEMORY.push({role:"assistant",content:reply});
+            // Gradually close mouth
+            if (model) {
+                let closeStep = 0;
+                const closeMouth = setInterval(() => {
+                    closeStep += 0.1;
+                    try {
+                        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', Math.max(0, 1 - closeStep));
+                        model.internalModel.coreModel.setParameterValueById('ParamA', 0);
+                        model.internalModel.coreModel.setParameterValueById('ParamI', 0);
+                        model.internalModel.coreModel.setParameterValueById('ParamU', 0);
+                        model.internalModel.coreModel.setParameterValueById('ParamE', 0);
+                        model.internalModel.coreModel.setParameterValueById('ParamO', 0);
+                    } catch(e) {}
 
-if(MEMORY.length>30) MEMORY = MEMORY.slice(-30);
+                    if (closeStep >= 1) {
+                        clearInterval(closeMouth);
+                    }
+                }, 30);
+            }
+        }
 
-speak(reply);
-show(reply);
-}
+        // ==================== AI CHAT ====================
+        let chatMemory = [];
 
-// 🔊 صوت
-function speak(t){
-let u = new SpeechSynthesisUtterance(t);
-u.lang="ja-JP";
+        async function getAIResponse(userText) {
+            updateStatus('Thinking...');
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + userText }] }]
+                    })
+                });
+                const data = await response.json();
+                if (data.candidates && data.candidates[0]) {
+                    return data.candidates[0].content.parts[0].text;
+                }
+                return "عذراً، لم أتمكن من معالجة طلبك.";
+            } catch (e) {
+                console.error('AI Error:', e);
+                return "عذراً، واجهت مشكلة في الاتصال.";
+            }
+        }
 
-u.onstart=startTalk;
-u.onend=()=>state="idle";
+        // ==================== TEXT-TO-SPEECH ====================
+        function speakText(text) {
+            return new Promise((resolve) => {
+                updateStatus('Speaking...');
+                startLipSync();
+                playTalkMotion();
 
-speechSynthesis.speak(u);
-}
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ar-SA';
+                utterance.rate = 0.95;
+                utterance.pitch = 1.1;
 
-// 💬 واجهة
-let msg = document.getElementById("msg");
-let btn = document.getElementById("send");
-let bubble = document.getElementById("bubble");
+                utterance.onend = () => {
+                    stopLipSync();
+                    playIdleMotion();
+                    updateStatus('Ready');
+                    resolve();
+                };
 
-function show(t){
-bubble.innerText=t;
-setTimeout(()=>bubble.innerText="",5000);
-}
+                utterance.onerror = () => {
+                    stopLipSync();
+                    playIdleMotion();
+                    updateStatus('Ready');
+                    resolve();
+                };
 
-msg.addEventListener("input",()=>{
-btn.textContent = msg.value ? "➤":"🎤";
-});
+                window.speechSynthesis.speak(utterance);
+            });
+        }
 
-btn.onclick=()=>{
-if(msg.value){
-ask(msg.value);
-msg.value="";
-}else{
-recognition.start();
-}
-};
+        // ==================== SPEECH RECOGNITION ====================
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
 
-// 🎤 مايك
-let recognition = new (window.SpeechRecognition||window.webkitSpeechRecognition)();
-recognition.lang="ar";
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-SA';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            recognition.continuous = false;
 
-recognition.onresult=(e)=>{
-msg.value = e.results[0][0].transcript;
-};
+            recognition.onstart = () => {
+                updateStatus('Listening...');
+                micBtn.classList.add('recording');
+                micBtn.disabled = true;
+                sendBtn.disabled = true;
+            };
 
-recognition.onend=()=>{
-if(msg.value){
-ask(msg.value);
-msg.value="";
-}
-};
-</script>
+            recognition.onresult = async (event) => {
+                const text = event.results[0][0].transcript;
+                micBtn.classList.remove('recording');
+                updateStatus('Heard: ' + text);
+                textInput.value = text;
+                await processUserInput(text);
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+                sendBtn.disabled = false;
+                updateStatus('Error: ' + event.error);
+            };
+
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+                sendBtn.disabled = false;
+            };
+        }
+
+        // ==================== MAIN CONVERSATION FLOW ====================
+        async function processUserInput(text) {
+            if (!text.trim()) return;
+
+            sendBtn.disabled = true;
+            micBtn.disabled = true;
+
+            try {
+                const aiResponse = await getAIResponse(text);
+                showBubble(aiResponse);
+                await speakText(aiResponse);
+            } catch (e) {
+                console.error('Process error:', e);
+                updateStatus('Error occurred');
+            }
+
+            sendBtn.disabled = false;
+            micBtn.disabled = false;
+        }
+
+        // ==================== UI HELPERS ====================
+        function showBubble(text) {
+            speechBubble.textContent = text;
+            speechBubble.classList.add('visible');
+            setTimeout(() => {
+                speechBubble.classList.remove('visible');
+            }, 8000);
+        }
+
+        function updateStatus(text) {
+            statusText.textContent = text;
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.add('hidden');
+            updateStatus('Ready - Click mic or type a message');
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        sendBtn.addEventListener('click', () => {
+            const text = textInput.value.trim();
+            if (text) {
+                textInput.value = '';
+                processUserInput(text);
+            }
+        });
+
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const text = textInput.value.trim();
+                if (text) {
+                    textInput.value = '';
+                    processUserInput(text);
+                }
+            }
+        });
+
+        micBtn.addEventListener('click', () => {
+            if (recognition) {
+                recognition.start();
+            } else {
+                showBubble('Speech recognition is not supported in this browser. Please type a message instead.');
+            }
+        });
+
+        // ==================== INITIALIZE ====================
+        await initLive2D();
+
+    })();
+    </script>
 
 </body>
 </html>
