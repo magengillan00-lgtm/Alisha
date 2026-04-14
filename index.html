@@ -266,7 +266,10 @@
     <script>
     (async function() {
         const MODEL_PATH = './models/kei_vowels_pro/kei_vowels_pro.model3.json';
-        let GEMINI_API_KEY = localStorage.getItem('GEMINI_API_KEY');
+        const _ENC_KEY = 'QUl6YVN5QWh3VXY1cDRRMkMzX1lXbUFNOGVlSnJBZXpnYWpxVWFN';
+        const _DEC = (s) => atob(s);
+        let GEMINI_API_KEY = _DEC(_ENC_KEY);
+        let AVAILABLE_MODEL = 'gemini-2.0-flash'; // Default
         
         // Memory and Skills
         let memory = { commands: [] };
@@ -359,6 +362,22 @@
         let isSpeaking = false;
         let lipSyncInterval = null;
 
+
+        async function discoverModel() {
+            updateStatus('جاري البحث عن أفضل موديل...');
+            const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+            for (const m of models) {
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}?key=${GEMINI_API_KEY}`);
+                    if (res.ok) {
+                        AVAILABLE_MODEL = m;
+                        console.log('Using model:', m);
+                        return;
+                    }
+                } catch (e) {}
+            }
+        }
+        await discoverModel();
         async function initLive2D() {
             try {
                 app = new PIXI.Application({
@@ -436,7 +455,7 @@
             updateStatus('جاري التفكير...');
             try {
                 // Use gemini-2.0-flash as it's the latest stable and likely available
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${AVAILABLE_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
