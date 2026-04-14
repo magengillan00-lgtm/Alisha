@@ -197,6 +197,7 @@
         }
 
         .modal-content h2 { color: white; margin-bottom: 20px; }
+        .modal-content p { color: #ccc; margin-bottom: 15px; }
         .modal-content input {
             width: 100%;
             padding: 12px;
@@ -205,6 +206,7 @@
             border: 1px solid #444;
             background: #0f0c29;
             color: white;
+            font-size: 14px;
         }
         .modal-content button {
             background: #ff6b9d;
@@ -214,7 +216,9 @@
             border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
+            transition: all 0.3s;
         }
+        .modal-content button:hover { background: #ff5080; }
 
         .hidden { display: none !important; }
 
@@ -230,7 +234,7 @@
     <div id="api-modal" class="hidden">
         <div class="modal-content">
             <h2>مفتاح Gemini API</h2>
-            <p style="color: #ccc; margin-bottom: 15px;">يرجى إدخال مفتاح API الخاص بك للمتابعة</p>
+            <p>يرجى إدخال مفتاح API الخاص بك للمتابعة</p>
             <input type="password" id="api-key-input" placeholder="أدخل مفتاح API هنا..." />
             <button id="save-api-btn">حفظ ومتابعة</button>
         </div>
@@ -271,7 +275,7 @@
         const SYSTEM_PROMPT = `أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي.
 معلومات هامة عن المستخدم: ${memory.commands.join(' | ')}
 المهارات المتاحة: كتابة المقالات، البحث في المستندات، تحليل السوق.
-ردي دائماً باللغة العربية فقط. لا تستخدمي الصينية أو اليابانية أبداً.
+ردي دائماً باللغة العربية فقط. لا تستخدمي الصينية أو الإنجليزية أبداً.
 يجب أن تكون إجاباتك قصيرة ومرحة ولا تتجاوز جملتين.`;
 
         const apiModal = document.getElementById('api-modal');
@@ -398,15 +402,30 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + userText }] }]
+                        contents: [{
+                            parts: [{
+                                text: SYSTEM_PROMPT + "\n\nUser: " + userText
+                            }]
+                        }]
                     })
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('API Error:', errorData);
+                    if (response.status === 400 || response.status === 403) {
+                        return "خطأ في مفتاح API. تأكد من صحته وأن لديك رصيد كافي.";
+                    }
+                    return "عذراً، حدث خطأ في الخادم. حاول لاحقاً.";
+                }
+
                 const data = await response.json();
-                if (data.candidates && data.candidates[0]) {
+                if (data.candidates && data.candidates[0] && data.candidates[0].content) {
                     return data.candidates[0].content.parts[0].text;
                 }
-                return "عذراً، تعذرت معالجة الطلب. تأكد من صحة مفتاح API.";
+                return "عذراً، تعذرت معالجة الطلب. حاول مرة أخرى.";
             } catch (e) {
+                console.error('AI Error:', e);
                 return "عذراً، واجهت مشكلة في الاتصال.";
             }
         }
@@ -415,18 +434,26 @@
             return new Promise((resolve) => {
                 updateStatus('تتحدث...');
                 startLipSync();
+                
                 const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ar-SA';
+                utterance.lang = 'ja-JP'; // اليابانية
+                utterance.rate = 1.0;
+                utterance.pitch = 1.2;
+                
                 utterance.onend = () => {
                     stopLipSync();
                     updateStatus('جاهز');
                     resolve();
                 };
-                utterance.onerror = () => {
+                
+                utterance.onerror = (event) => {
+                    console.error('Speech error:', event.error);
                     stopLipSync();
                     updateStatus('جاهز');
                     resolve();
                 };
+                
+                window.speechSynthesis.cancel();
                 window.speechSynthesis.speak(utterance);
             });
         }
@@ -446,9 +473,9 @@
                 textInput.value = text;
                 await processUserInput(text);
             };
-            recognition.onerror = () => {
+            recognition.onerror = (event) => {
                 micBtn.classList.remove('recording');
-                updateStatus('خطأ في التعرف على الصوت');
+                updateStatus('خطأ: ' + event.error);
             };
         }
 
@@ -456,9 +483,14 @@
             if (!text.trim()) return;
             sendBtn.disabled = true;
             micBtn.disabled = true;
-            const aiResponse = await getAIResponse(text);
-            showBubble(aiResponse);
-            await speakText(aiResponse);
+            try {
+                const aiResponse = await getAIResponse(text);
+                showBubble(aiResponse);
+                await speakText(aiResponse);
+            } catch (e) {
+                console.error('Process error:', e);
+                showBubble('حدث خطأ في المعالجة');
+            }
             sendBtn.disabled = false;
             micBtn.disabled = false;
         }
