@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ja" dir="ltr">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -234,29 +234,29 @@
 
     <div id="api-modal" class="hidden">
         <div class="modal-content">
-            <h2>مفتاح Gemini API</h2>
-            <p>يرجى إدخال مفتاح API الخاص بك للمتابعة</p>
-            <p style="font-size: 12px; color: #999;">احصل على مفتاح مجاني من <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
-            <input type="password" id="api-key-input" placeholder="أدخل مفتاح API هنا..." />
-            <button id="save-api-btn">حفظ ومتابعة</button>
+            <h2>Gemini API Key</h2>
+            <p>Please enter your API key to continue</p>
+            <p style="font-size: 12px; color: #999;">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
+            <input type="password" id="api-key-input" placeholder="Enter API key here..." />
+            <button id="save-api-btn">Save and Continue</button>
             <p id="api-error" style="color: #ff6b9d; margin-top: 10px; display: none;"></p>
         </div>
     </div>
 
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <p id="loading-text">جاري تحميل أليشيا...</p>
+        <p id="loading-text">Loading Alicia...</p>
         <p id="loading-error"></p>
     </div>
 
     <div id="speech-bubble"></div>
-    <div id="status-bar">جاهز</div>
+    <div id="status-bar">Ready</div>
     <div id="canvas-container"></div>
 
     <div id="controls-area">
-        <input id="text-input" type="text" placeholder="اكتب رسالة..." autocomplete="off" />
-        <button class="ctrl-btn" id="mic-btn" title="إدخال صوتي">&#127908;</button>
-        <button class="ctrl-btn" id="send-btn" title="إرسال">&#10148;</button>
+        <input id="text-input" type="text" placeholder="Type a message..." autocomplete="off" />
+        <button class="ctrl-btn" id="mic-btn" title="Voice Input">&#127908;</button>
+        <button class="ctrl-btn" id="send-btn" title="Send">&#10148;</button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
@@ -278,11 +278,11 @@
             if (memRes.ok) memory = await memRes.json();
         } catch(e) { console.log("No memory file found"); }
 
-        const SYSTEM_PROMPT = `أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي.
-معلومات هامة عن المستخدم: ${memory.commands.join(' | ')}
-المهارات المتاحة: كتابة المقالات، البحث في المستندات، تحليل السوق.
-ردي دائماً باللغة العربية فقط. لا تستخدمي الصينية أو الإنجليزية أبداً.
-يجب أن تكون إجاباتك قصيرة ومرحة ولا تتجاوز جملتين.`;
+        const SYSTEM_PROMPT = `You are Alicia (アリーシャ), a friendly and intelligent AI assistant in an anime girl avatar.
+        Important User Info: ${memory.commands.join(' | ')}
+        Available Skills: Article writing, document search, market analysis.
+        RESPONSE RULE: ALWAYS respond in JAPANESE ONLY. Never use Arabic or English.
+        Be cute, helpful, and keep responses short (max 2 sentences).`;
 
         const apiModal = document.getElementById('api-modal');
         const apiKeyInput = document.getElementById('api-key-input');
@@ -305,16 +305,15 @@
         saveApiBtn.addEventListener('click', async () => {
             const key = apiKeyInput.value.trim();
             if (!key) {
-                apiError.textContent = 'يرجى إدخال مفتاح API';
+                apiError.textContent = 'Please enter API key';
                 apiError.style.display = 'block';
                 return;
             }
             
             saveApiBtn.disabled = true;
-            saveApiBtn.textContent = 'جاري الاختبار...';
+            saveApiBtn.textContent = 'Testing...';
             
             try {
-                // Test with gemini-2.0-flash which is more likely to be available
                 const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
                 const response = await fetch(testUrl, {
                     method: 'POST',
@@ -330,16 +329,16 @@
                     apiModal.classList.add('hidden');
                     location.reload();
                 } else {
-                    apiError.textContent = 'مفتاح API غير صحيح أو لا يدعم النماذج المطلوبة.';
+                    apiError.textContent = 'Invalid API key or model not supported.';
                     apiError.style.display = 'block';
                 }
             } catch (e) {
-                apiError.textContent = 'خطأ في الاتصال. تحقق من الإنترنت.';
+                apiError.textContent = 'Connection error.';
                 apiError.style.display = 'block';
             }
             
             saveApiBtn.disabled = false;
-            saveApiBtn.textContent = 'حفظ ومتابعة';
+            saveApiBtn.textContent = 'Save and Continue';
         });
 
         apiKeyInput.addEventListener('keydown', (e) => {
@@ -347,13 +346,13 @@
         });
 
         function showError(msg) {
-            loadingText.textContent = 'خطأ';
+            loadingText.textContent = 'Error';
             loadingError.textContent = msg;
             loadingError.style.display = 'block';
         }
 
         if (typeof PIXI === 'undefined' || typeof Live2DCubismCore === 'undefined') {
-            showError('فشل تحميل المكتبات الأساسية. يرجى التحقق من الاتصال.');
+            showError('Failed to load core libraries.');
             return;
         }
 
@@ -362,9 +361,8 @@
         let isSpeaking = false;
         let lipSyncInterval = null;
 
-
         async function discoverModel() {
-            updateStatus('جاري البحث عن أفضل موديل...');
+            updateStatus('Finding best model...');
             const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
             for (const m of models) {
                 try {
@@ -378,6 +376,7 @@
             }
         }
         await discoverModel();
+
         async function initLive2D() {
             try {
                 app = new PIXI.Application({
@@ -420,11 +419,11 @@
 
                 setTimeout(() => {
                     loadingOverlay.classList.add('hidden');
-                    updateStatus('جاهز - اضغط على الميكروفون أو اكتب رسالة');
+                    updateStatus('Ready');
                 }, 1000);
 
             } catch (error) {
-                showError('فشل تحميل النموذج: ' + error.message);
+                showError('Model load failed: ' + error.message);
             }
         }
 
@@ -450,11 +449,10 @@
         async function getAIResponse(userText) {
             if (!GEMINI_API_KEY) {
                 apiModal.classList.remove('hidden');
-                return "يرجى إدخال مفتاح API أولاً.";
+                return "Please enter API key first.";
             }
-            updateStatus('جاري التفكير...');
+            updateStatus('Thinking...');
             try {
-                // Use gemini-2.0-flash as it's the latest stable and likely available
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${AVAILABLE_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
                 const response = await fetch(url, {
                     method: 'POST',
@@ -472,44 +470,42 @@
                     const errorData = await response.json();
                     console.error('API Error:', errorData);
                     if (response.status === 400 || response.status === 403 || response.status === 404) {
-                        localStorage.removeItem('GEMINI_API_KEY');
-                        apiModal.classList.remove('hidden');
-                        return "مفتاح API غير صحيح أو لا يدعم النموذج المطلوب. يرجى إدخال مفتاح جديد.";
+                        return "API key error or model not found.";
                     }
-                    return "عذراً، حدث خطأ في الخادم. حاول لاحقاً.";
+                    return "Server error. Please try again.";
                 }
 
                 const data = await response.json();
                 if (data.candidates && data.candidates[0] && data.candidates[0].content) {
                     return data.candidates[0].content.parts[0].text;
                 }
-                return "عذراً، تعذرت معالجة الطلب. حاول مرة أخرى.";
+                return "Failed to process request.";
             } catch (e) {
                 console.error('AI Error:', e);
-                return "عذراً، واجهت مشكلة في الاتصال.";
+                return "Connection error.";
             }
         }
 
         function speakText(text) {
             return new Promise((resolve) => {
-                updateStatus('تتحدث...');
+                updateStatus('Speaking...');
                 startLipSync();
                 
                 const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ja-JP'; // اليابانية
+                utterance.lang = 'ja-JP';
                 utterance.rate = 1.0;
                 utterance.pitch = 1.2;
                 
                 utterance.onend = () => {
                     stopLipSync();
-                    updateStatus('جاهز');
+                    updateStatus('Ready');
                     resolve();
                 };
                 
                 utterance.onerror = (event) => {
                     console.error('Speech error:', event.error);
                     stopLipSync();
-                    updateStatus('جاهز');
+                    updateStatus('Ready');
                     resolve();
                 };
                 
@@ -522,12 +518,12 @@
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = 'ar-SA';
+            recognition.lang = 'ar-SA'; // Keep Arabic recognition for user
             recognition.continuous = false;
             recognition.interimResults = false;
             
             recognition.onstart = () => {
-                updateStatus('جاري الاستماع...');
+                updateStatus('Listening...');
                 micBtn.classList.add('recording');
                 micBtn.disabled = true;
                 sendBtn.disabled = true;
@@ -543,7 +539,7 @@
                 micBtn.classList.remove('recording');
                 micBtn.disabled = false;
                 sendBtn.disabled = false;
-                updateStatus('خطأ: ' + event.error);
+                updateStatus('Error: ' + event.error);
             };
             
             recognition.onend = () => {
@@ -563,7 +559,7 @@
                 await speakText(aiResponse);
             } catch (e) {
                 console.error('Process error:', e);
-                showBubble('حدث خطأ في المعالجة');
+                showBubble('Error processing request.');
             }
             sendBtn.disabled = false;
             micBtn.disabled = false;
@@ -601,7 +597,7 @@
             if (recognition) {
                 recognition.start();
             } else {
-                alert('متصفحك لا يدعم التعرف على الصوت.');
+                alert('Speech recognition not supported.');
             }
         });
 
