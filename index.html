@@ -173,17 +173,50 @@
             border-radius: 12px;
         }
 
-        #title-badge {
+        #api-modal {
             position: fixed;
-            top: 15px;
-            right: 20px;
-            color: rgba(255,255,255,0.6);
-            font-size: 13px;
-            z-index: 10;
-            background: rgba(0,0,0,0.3);
-            padding: 5px 12px;
-            border-radius: 10px;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
         }
+
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            border: 1px solid #ff6b9d;
+            box-shadow: 0 0 20px rgba(255, 107, 157, 0.2);
+        }
+
+        .modal-content h2 { color: white; margin-bottom: 20px; }
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            border: 1px solid #444;
+            background: #0f0c29;
+            color: white;
+        }
+        .modal-content button {
+            background: #ff6b9d;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .hidden { display: none !important; }
 
         @media (max-width: 600px) {
             #text-input { width: 200px; font-size: 14px; padding: 12px 16px; }
@@ -194,42 +227,56 @@
 </head>
 <body>
 
-    <div id="title-badge">Alicia AI - Live2D</div>
+    <div id="api-modal" class="hidden">
+        <div class="modal-content">
+            <h2>مفتاح Gemini API</h2>
+            <p style="color: #ccc; margin-bottom: 15px;">يرجى إدخال مفتاح API الخاص بك للمتابعة</p>
+            <input type="password" id="api-key-input" placeholder="أدخل مفتاح API هنا..." />
+            <button id="save-api-btn">حفظ ومتابعة</button>
+        </div>
+    </div>
 
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <p id="loading-text">Loading Alicia Live2D Model...</p>
+        <p id="loading-text">جاري تحميل أليشيا...</p>
         <p id="loading-error"></p>
     </div>
 
     <div id="speech-bubble"></div>
-    <div id="status-bar">Ready</div>
+    <div id="status-bar">جاهز</div>
     <div id="canvas-container"></div>
 
     <div id="controls-area">
-        <input id="text-input" type="text" placeholder="Type a message..." autocomplete="off" />
-        <button class="ctrl-btn" id="mic-btn" title="Voice Input">&#127908;</button>
-        <button class="ctrl-btn" id="send-btn" title="Send">&#10148;</button>
+        <input id="text-input" type="text" placeholder="اكتب رسالة..." autocomplete="off" />
+        <button class="ctrl-btn" id="mic-btn" title="إدخال صوتي">&#127908;</button>
+        <button class="ctrl-btn" id="send-btn" title="إرسال">&#10148;</button>
     </div>
 
-    <!-- Step 1: Load PIXI.js v6 (compatible with pixi-live2d-display) -->
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
-
-    <!-- Step 2: Load Live2D Cubism Core SDK -->
     <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-
-    <!-- Step 3: Load pixi-live2d-display for Cubism 4 -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
 
     <script>
     (async function() {
-
-        // ==================== CONFIGURATION ====================
         const MODEL_PATH = './models/kei_vowels_pro/kei_vowels_pro.model3.json';
-        const GEMINI_API_KEY = "AIzaSyBam_QaB2ogtvxiqCEkKMGwdqHSkNdqUdE";
-        const SYSTEM_PROMPT = "أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي. ردي دائماً باختصار وبأسلوب مرح باللغة العربية. يجب ألا تتجاوز إجابتك جملتين.";
+        let GEMINI_API_KEY = localStorage.getItem('GEMINI_API_KEY');
+        
+        // Memory and Skills
+        let memory = { commands: [] };
+        try {
+            const memRes = await fetch('./memory.json');
+            if (memRes.ok) memory = await memRes.json();
+        } catch(e) { console.log("No memory file found"); }
 
-        // ==================== DOM ELEMENTS ====================
+        const SYSTEM_PROMPT = `أنتِ أليشيا (Alicia)، مساعدة ذكية وودودة بهيئة شخصية أنمي.
+معلومات هامة عن المستخدم: ${memory.commands.join(' | ')}
+المهارات المتاحة: كتابة المقالات، البحث في المستندات، تحليل السوق.
+ردي دائماً باللغة العربية فقط. لا تستخدمي الصينية أو اليابانية أبداً.
+يجب أن تكون إجاباتك قصيرة ومرحة ولا تتجاوز جملتين.`;
+
+        const apiModal = document.getElementById('api-modal');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveApiBtn = document.getElementById('save-api-btn');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
         const loadingError = document.getElementById('loading-error');
@@ -240,42 +287,31 @@
         const sendBtn = document.getElementById('send-btn');
         const canvasContainer = document.getElementById('canvas-container');
 
-        // ==================== VERIFY LIBRARIES ====================
+        if (!GEMINI_API_KEY) {
+            apiModal.classList.remove('hidden');
+        }
+
+        saveApiBtn.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('GEMINI_API_KEY', key);
+                GEMINI_API_KEY = key;
+                apiModal.classList.add('hidden');
+                location.reload();
+            }
+        });
+
         function showError(msg) {
-            loadingText.textContent = 'Error';
+            loadingText.textContent = 'خطأ';
             loadingError.textContent = msg;
             loadingError.style.display = 'block';
         }
 
-        if (typeof PIXI === 'undefined') {
-            showError('PIXI.js failed to load. Check your internet connection.');
+        if (typeof PIXI === 'undefined' || typeof Live2DCubismCore === 'undefined') {
+            showError('فشل تحميل المكتبات الأساسية. يرجى التحقق من الاتصال.');
             return;
         }
 
-        if (typeof Live2DCubismCore === 'undefined') {
-            showError('Live2D Cubism Core failed to load. Trying fallback...');
-            // Try fallback CDN for Cubism Core
-            try {
-                await new Promise((resolve, reject) => {
-                    const s = document.createElement('script');
-                    s.src = 'https://cdn.jsdelivr.net/gh/nicx-next/nicx-next.github.io@master/live2d_cubism/js/live2dcubismcore.min.js';
-                    s.onload = resolve;
-                    s.onerror = reject;
-                    document.head.appendChild(s);
-                });
-                loadingError.style.display = 'none';
-            } catch(e) {
-                showError('Live2D Core SDK is unavailable. The model cannot be loaded.');
-                return;
-            }
-        }
-
-        if (!PIXI.live2d || !PIXI.live2d.Live2DModel) {
-            showError('pixi-live2d-display library failed to load.');
-            return;
-        }
-
-        // ==================== LIVE2D SETUP ====================
         const Live2DModel = PIXI.live2d.Live2DModel;
         let app, model;
         let isSpeaking = false;
@@ -283,9 +319,6 @@
 
         async function initLive2D() {
             try {
-                loadingText.textContent = 'Initializing engine...';
-
-                // Create PIXI Application (v6 API)
                 app = new PIXI.Application({
                     width: window.innerWidth,
                     height: window.innerHeight,
@@ -295,21 +328,13 @@
                     autoDensity: true,
                 });
 
-                const canvas = app.view;
-                canvas.style.width = '100%';
-                canvas.style.height = '100%';
-                canvas.style.display = 'block';
-                canvasContainer.appendChild(canvas);
+                canvasContainer.appendChild(app.view);
 
-                loadingText.textContent = 'Loading Alicia model...';
-
-                // Load the Live2D model
                 model = await Live2DModel.from(MODEL_PATH, {
                     autoInteract: false,
                     autoUpdate: true,
                 });
 
-                // Scale model to fit screen
                 const scaleRatio = Math.min(
                     window.innerWidth / model.width * 0.75,
                     window.innerHeight / model.height * 0.85
@@ -321,18 +346,6 @@
 
                 app.stage.addChild(model);
 
-                // Enable mouse/touch tracking for model
-                app.stage.eventMode = 'static';
-                app.stage.hitArea = app.screen;
-
-                model.interactive = true;
-                model.buttonMode = true;
-                model.on('pointerdown', (hitAreas) => {
-                    playRandomMotion();
-                    showBubble('أهلاً! أنا أليشيا');
-                });
-
-                // Handle resize
                 window.addEventListener('resize', () => {
                     app.renderer.resize(window.innerWidth, window.innerHeight);
                     const newScale = Math.min(
@@ -344,136 +357,43 @@
                     model.y = app.screen.height / 2 + 40;
                 });
 
-                // Track mouse for model to follow
-                document.addEventListener('mousemove', (e) => {
-                    if (model && model.internalModel) {
-                        const rect = canvas.getBoundingClientRect();
-                        const x = (e.clientX - rect.left) / rect.width;
-                        const y = (e.clientY - rect.top) / rect.height;
-                        model.focus(x * model.internalModel.originalWidth, y * model.internalModel.originalHeight);
-                    }
-                });
-
-                document.addEventListener('touchmove', (e) => {
-                    if (model && model.internalModel && e.touches.length > 0) {
-                        const touch = e.touches[0];
-                        const rect = canvas.getBoundingClientRect();
-                        const x = (touch.clientX - rect.left) / rect.width;
-                        const y = (touch.clientY - rect.top) / rect.height;
-                        model.focus(x * model.internalModel.originalWidth, y * model.internalModel.originalHeight);
-                    }
-                });
-
-                // Hide loading screen
                 setTimeout(() => {
-                    hideLoading();
-                    playRandomMotion();
+                    loadingOverlay.classList.add('hidden');
+                    updateStatus('جاهز - اضغط على الميكروفون أو اكتب رسالة');
                 }, 1000);
 
-                // Periodic idle animation
-                setInterval(() => {
-                    if (!isSpeaking && model) {
-                        if (Math.random() > 0.5) {
-                            playRandomMotion();
-                        }
-                    }
-                }, 10000);
-
-                console.log('Live2D model loaded successfully!');
-
             } catch (error) {
-                console.error('Live2D Error:', error);
-                showError('Failed to load model: ' + error.message);
+                showError('فشل تحميل النموذج: ' + error.message);
             }
         }
 
-        function playRandomMotion() {
-            if (!model) return;
-            try {
-                const motionManager = model.internalModel.motionManager;
-                if (motionManager) {
-                    model.motion('');
-                }
-            } catch(e) {
-                // Motions may not be available
-            }
-        }
-
-        // ==================== LIP SYNC ====================
         function startLipSync() {
             isSpeaking = true;
-            let t = 0;
-
             lipSyncInterval = setInterval(() => {
                 if (!isSpeaking || !model) return;
-                t += 0.12;
-
-                const coreModel = model.internalModel.coreModel;
                 const mouthOpen = 0.2 + Math.random() * 0.6;
-
                 try {
-                    // Vowel-based lip sync for natural mouth movement
-                    const vowelPhase = (t * 1.8) % 5;
-                    const vowelIndex = Math.floor(vowelPhase);
-                    const blendFactor = vowelPhase - vowelIndex;
-                    const nextIndex = (vowelIndex + 1) % 5;
-
-                    const vowelParams = ['ParamA', 'ParamI', 'ParamU', 'ParamE', 'ParamO'];
-
-                    // Reset all vowel parameters
-                    for (const vp of vowelParams) {
-                        coreModel.setParameterValueById(vp, 0);
-                    }
-
-                    // Blend between two vowels for smooth transition
-                    const activeVal = (1.0 - blendFactor) * mouthOpen;
-                    const nextVal = blendFactor * mouthOpen * 0.6;
-
-                    coreModel.setParameterValueById(vowelParams[vowelIndex], activeVal);
-                    coreModel.setParameterValueById(vowelParams[nextIndex], nextVal);
-                    coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
-
-                } catch (e) {
-                    // Fallback: basic mouth open/close
-                    try {
-                        coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
-                    } catch(e2) {}
-                }
-            }, 75);
+                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                } catch (e) {}
+            }, 100);
         }
 
         function stopLipSync() {
             isSpeaking = false;
-            if (lipSyncInterval) {
-                clearInterval(lipSyncInterval);
-                lipSyncInterval = null;
-            }
-
-            // Smoothly close mouth
-            if (model) {
-                let step = 0;
-                const closeInterval = setInterval(() => {
-                    step += 0.15;
-                    const closeVal = Math.max(0, 1 - step);
-                    try {
-                        const cm = model.internalModel.coreModel;
-                        cm.setParameterValueById('ParamMouthOpenY', closeVal);
-                        cm.setParameterValueById('ParamA', 0);
-                        cm.setParameterValueById('ParamI', 0);
-                        cm.setParameterValueById('ParamU', 0);
-                        cm.setParameterValueById('ParamE', 0);
-                        cm.setParameterValueById('ParamO', 0);
-                    } catch(e) {}
-                    if (step >= 1) clearInterval(closeInterval);
-                }, 25);
-            }
+            if (lipSyncInterval) clearInterval(lipSyncInterval);
+            try {
+                model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
+            } catch (e) {}
         }
 
-        // ==================== AI CHAT ====================
         async function getAIResponse(userText) {
-            updateStatus('Thinking...');
+            if (!GEMINI_API_KEY) {
+                apiModal.classList.remove('hidden');
+                return "يرجى إدخال مفتاح API أولاً.";
+            }
+            updateStatus('جاري التفكير...');
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -485,101 +405,64 @@
                 if (data.candidates && data.candidates[0]) {
                     return data.candidates[0].content.parts[0].text;
                 }
-                return "عذراً، لم أتمكن من معالجة طلبك.";
+                return "عذراً، تعذرت معالجة الطلب. تأكد من صحة مفتاح API.";
             } catch (e) {
-                console.error('AI Error:', e);
                 return "عذراً، واجهت مشكلة في الاتصال.";
             }
         }
 
-        // ==================== TEXT-TO-SPEECH ====================
         function speakText(text) {
             return new Promise((resolve) => {
-                updateStatus('Speaking...');
+                updateStatus('تتحدث...');
                 startLipSync();
-                playRandomMotion();
-
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'ar-SA';
-                utterance.rate = 0.95;
-                utterance.pitch = 1.1;
-
                 utterance.onend = () => {
                     stopLipSync();
-                    updateStatus('Ready');
+                    updateStatus('جاهز');
                     resolve();
                 };
-
                 utterance.onerror = () => {
                     stopLipSync();
-                    updateStatus('Ready');
+                    updateStatus('جاهز');
                     resolve();
                 };
-
                 window.speechSynthesis.speak(utterance);
             });
         }
 
-        // ==================== SPEECH RECOGNITION ====================
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
-
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.lang = 'ar-SA';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-            recognition.continuous = false;
-
             recognition.onstart = () => {
-                updateStatus('Listening...');
+                updateStatus('جاري الاستماع...');
                 micBtn.classList.add('recording');
-                micBtn.disabled = true;
-                sendBtn.disabled = true;
             };
-
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
                 micBtn.classList.remove('recording');
-                updateStatus('Heard: ' + text);
                 textInput.value = text;
                 await processUserInput(text);
             };
-
-            recognition.onerror = (event) => {
+            recognition.onerror = () => {
                 micBtn.classList.remove('recording');
-                micBtn.disabled = false;
-                sendBtn.disabled = false;
-                updateStatus('Error: ' + event.error);
-            };
-
-            recognition.onend = () => {
-                micBtn.classList.remove('recording');
-                micBtn.disabled = false;
-                sendBtn.disabled = false;
+                updateStatus('خطأ في التعرف على الصوت');
             };
         }
 
-        // ==================== MAIN CONVERSATION FLOW ====================
         async function processUserInput(text) {
             if (!text.trim()) return;
             sendBtn.disabled = true;
             micBtn.disabled = true;
-
-            try {
-                const aiResponse = await getAIResponse(text);
-                showBubble(aiResponse);
-                await speakText(aiResponse);
-            } catch (e) {
-                console.error('Process error:', e);
-                updateStatus('Error occurred');
-            }
-
+            const aiResponse = await getAIResponse(text);
+            showBubble(aiResponse);
+            await speakText(aiResponse);
             sendBtn.disabled = false;
             micBtn.disabled = false;
         }
 
-        // ==================== UI HELPERS ====================
         function showBubble(text) {
             speechBubble.textContent = text;
             speechBubble.classList.add('visible');
@@ -590,12 +473,6 @@
             statusText.textContent = text;
         }
 
-        function hideLoading() {
-            loadingOverlay.classList.add('hidden');
-            updateStatus('Ready - Click mic or type a message');
-        }
-
-        // ==================== EVENT LISTENERS ====================
         sendBtn.addEventListener('click', () => {
             const text = textInput.value.trim();
             if (text) {
@@ -615,18 +492,12 @@
         });
 
         micBtn.addEventListener('click', () => {
-            if (recognition) {
-                recognition.start();
-            } else {
-                showBubble('Speech recognition is not supported in this browser. Please type a message.');
-            }
+            if (recognition) recognition.start();
+            else alert('متصفحك لا يدعم التعرف على الصوت.');
         });
 
-        // ==================== INITIALIZE ====================
         await initLive2D();
-
     })();
     </script>
-
 </body>
 </html>
