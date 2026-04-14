@@ -190,14 +190,15 @@
             padding: 30px;
             border-radius: 20px;
             width: 90%;
-            max-width: 400px;
+            max-width: 450px;
             text-align: center;
             border: 1px solid #ff6b9d;
             box-shadow: 0 0 20px rgba(255, 107, 157, 0.2);
         }
 
         .modal-content h2 { color: white; margin-bottom: 20px; }
-        .modal-content p { color: #ccc; margin-bottom: 15px; }
+        .modal-content p { color: #ccc; margin-bottom: 15px; font-size: 14px; }
+        .modal-content a { color: #ff6b9d; text-decoration: none; }
         .modal-content input {
             width: 100%;
             padding: 12px;
@@ -235,8 +236,10 @@
         <div class="modal-content">
             <h2>مفتاح Gemini API</h2>
             <p>يرجى إدخال مفتاح API الخاص بك للمتابعة</p>
+            <p style="font-size: 12px; color: #999;">احصل على مفتاح مجاني من <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></p>
             <input type="password" id="api-key-input" placeholder="أدخل مفتاح API هنا..." />
             <button id="save-api-btn">حفظ ومتابعة</button>
+            <p id="api-error" style="color: #ff6b9d; margin-top: 10px; display: none;"></p>
         </div>
     </div>
 
@@ -281,6 +284,7 @@
         const apiModal = document.getElementById('api-modal');
         const apiKeyInput = document.getElementById('api-key-input');
         const saveApiBtn = document.getElementById('save-api-btn');
+        const apiError = document.getElementById('api-error');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
         const loadingError = document.getElementById('loading-error');
@@ -295,14 +299,49 @@
             apiModal.classList.remove('hidden');
         }
 
-        saveApiBtn.addEventListener('click', () => {
+        saveApiBtn.addEventListener('click', async () => {
             const key = apiKeyInput.value.trim();
-            if (key) {
-                localStorage.setItem('GEMINI_API_KEY', key);
-                GEMINI_API_KEY = key;
-                apiModal.classList.add('hidden');
-                location.reload();
+            if (!key) {
+                apiError.textContent = 'يرجى إدخال مفتاح API';
+                apiError.style.display = 'block';
+                return;
             }
+            
+            // Test the API key
+            saveApiBtn.disabled = true;
+            saveApiBtn.textContent = 'جاري الاختبار...';
+            
+            try {
+                const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+                const response = await fetch(testUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: 'test' }] }]
+                    })
+                });
+                
+                if (response.ok) {
+                    localStorage.setItem('GEMINI_API_KEY', key);
+                    GEMINI_API_KEY = key;
+                    apiModal.classList.add('hidden');
+                    location.reload();
+                } else {
+                    const errorData = await response.json();
+                    apiError.textContent = 'مفتاح API غير صحيح أو منتهي الصلاحية. تأكد من صحته.';
+                    apiError.style.display = 'block';
+                }
+            } catch (e) {
+                apiError.textContent = 'خطأ في الاتصال. تحقق من الإنترنت.';
+                apiError.style.display = 'block';
+            }
+            
+            saveApiBtn.disabled = false;
+            saveApiBtn.textContent = 'حفظ ومتابعة';
+        });
+
+        apiKeyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveApiBtn.click();
         });
 
         function showError(msg) {
@@ -414,7 +453,9 @@
                     const errorData = await response.json();
                     console.error('API Error:', errorData);
                     if (response.status === 400 || response.status === 403) {
-                        return "خطأ في مفتاح API. تأكد من صحته وأن لديك رصيد كافي.";
+                        localStorage.removeItem('GEMINI_API_KEY');
+                        apiModal.classList.remove('hidden');
+                        return "مفتاح API غير صحيح أو منتهي الصلاحية. يرجى إدخال مفتاح جديد.";
                     }
                     return "عذراً، حدث خطأ في الخادم. حاول لاحقاً.";
                 }
@@ -463,19 +504,34 @@
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.lang = 'ar-SA';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            
             recognition.onstart = () => {
                 updateStatus('جاري الاستماع...');
                 micBtn.classList.add('recording');
+                micBtn.disabled = true;
+                sendBtn.disabled = true;
             };
+            
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
+                // لا نعرض النص في صندوق الإدخال - نرسل مباشرة
                 micBtn.classList.remove('recording');
-                textInput.value = text;
                 await processUserInput(text);
             };
+            
             recognition.onerror = (event) => {
                 micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+                sendBtn.disabled = false;
                 updateStatus('خطأ: ' + event.error);
+            };
+            
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                micBtn.disabled = false;
+                sendBtn.disabled = false;
             };
         }
 
@@ -524,8 +580,11 @@
         });
 
         micBtn.addEventListener('click', () => {
-            if (recognition) recognition.start();
-            else alert('متصفحك لا يدعم التعرف على الصوت.');
+            if (recognition) {
+                recognition.start();
+            } else {
+                alert('متصفحك لا يدعم التعرف على الصوت.');
+            }
         });
 
         await initLive2D();
