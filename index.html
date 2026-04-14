@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Alicia AI - Live2D Avatar</title>
 
-    <!-- Pixi.js v7 + Live2D Cubism SDK -->
-    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.3.2/dist/pixi.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
-
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -24,14 +19,11 @@
 
         #canvas-container {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
             z-index: 1;
         }
 
-        /* Loading Overlay */
         #loading-overlay {
             position: fixed;
             top: 0; left: 0;
@@ -69,9 +61,17 @@
         #loading-text {
             font-size: 16px;
             color: #ddd;
+            text-align: center;
+            max-width: 300px;
         }
 
-        /* Speech Bubble */
+        #loading-error {
+            font-size: 14px;
+            color: #ff6b9d;
+            margin-top: 10px;
+            display: none;
+        }
+
         #speech-bubble {
             position: fixed;
             top: 30px;
@@ -93,11 +93,8 @@
             border: 1px solid rgba(255, 107, 157, 0.3);
         }
 
-        #speech-bubble.visible {
-            opacity: 1;
-        }
+        #speech-bubble.visible { opacity: 1; }
 
-        /* Controls Area */
         #controls-area {
             position: fixed;
             bottom: 30px;
@@ -122,13 +119,8 @@
             transition: border-color 0.3s;
         }
 
-        #text-input:focus {
-            border-color: #ff6b9d;
-        }
-
-        #text-input::placeholder {
-            color: rgba(255,255,255,0.5);
-        }
+        #text-input:focus { border-color: #ff6b9d; }
+        #text-input::placeholder { color: rgba(255,255,255,0.5); }
 
         .ctrl-btn {
             width: 50px; height: 50px;
@@ -168,7 +160,6 @@
             50% { box-shadow: 0 0 0 12px rgba(255, 0, 0, 0); }
         }
 
-        /* Status */
         #status-bar {
             position: fixed;
             bottom: 95px;
@@ -182,7 +173,6 @@
             border-radius: 12px;
         }
 
-        /* Title */
         #title-badge {
             position: fixed;
             top: 15px;
@@ -195,7 +185,6 @@
             border-radius: 10px;
         }
 
-        /* Mobile responsive */
         @media (max-width: 600px) {
             #text-input { width: 200px; font-size: 14px; padding: 12px 16px; }
             .ctrl-btn { width: 45px; height: 45px; font-size: 18px; }
@@ -210,12 +199,11 @@
     <div id="loading-overlay">
         <div class="spinner"></div>
         <p id="loading-text">Loading Alicia Live2D Model...</p>
+        <p id="loading-error"></p>
     </div>
 
     <div id="speech-bubble"></div>
-
     <div id="status-bar">Ready</div>
-
     <div id="canvas-container"></div>
 
     <div id="controls-area">
@@ -224,8 +212,18 @@
         <button class="ctrl-btn" id="send-btn" title="Send">&#10148;</button>
     </div>
 
+    <!-- Step 1: Load PIXI.js v6 (compatible with pixi-live2d-display) -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+
+    <!-- Step 2: Load Live2D Cubism Core SDK -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+
+    <!-- Step 3: Load pixi-live2d-display for Cubism 4 -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
     <script>
     (async function() {
+
         // ==================== CONFIGURATION ====================
         const MODEL_PATH = './models/kei_vowels_pro/kei_vowels_pro.model3.json';
         const GEMINI_API_KEY = "AIzaSyBam_QaB2ogtvxiqCEkKMGwdqHSkNdqUdE";
@@ -234,6 +232,7 @@
         // ==================== DOM ELEMENTS ====================
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
+        const loadingError = document.getElementById('loading-error');
         const speechBubble = document.getElementById('speech-bubble');
         const statusText = document.getElementById('status-bar');
         const textInput = document.getElementById('text-input');
@@ -241,122 +240,162 @@
         const sendBtn = document.getElementById('send-btn');
         const canvasContainer = document.getElementById('canvas-container');
 
+        // ==================== VERIFY LIBRARIES ====================
+        function showError(msg) {
+            loadingText.textContent = 'Error';
+            loadingError.textContent = msg;
+            loadingError.style.display = 'block';
+        }
+
+        if (typeof PIXI === 'undefined') {
+            showError('PIXI.js failed to load. Check your internet connection.');
+            return;
+        }
+
+        if (typeof Live2DCubismCore === 'undefined') {
+            showError('Live2D Cubism Core failed to load. Trying fallback...');
+            // Try fallback CDN for Cubism Core
+            try {
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdn.jsdelivr.net/gh/nicx-next/nicx-next.github.io@master/live2d_cubism/js/live2dcubismcore.min.js';
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+                loadingError.style.display = 'none';
+            } catch(e) {
+                showError('Live2D Core SDK is unavailable. The model cannot be loaded.');
+                return;
+            }
+        }
+
+        if (!PIXI.live2d || !PIXI.live2d.Live2DModel) {
+            showError('pixi-live2d-display library failed to load.');
+            return;
+        }
+
         // ==================== LIVE2D SETUP ====================
+        const Live2DModel = PIXI.live2d.Live2DModel;
         let app, model;
         let isSpeaking = false;
         let lipSyncInterval = null;
-        let currentMotion = null;
 
         async function initLive2D() {
             try {
-                loadingText.textContent = 'Initializing Live2D Engine...';
+                loadingText.textContent = 'Initializing engine...';
 
-                // Create PIXI Application
+                // Create PIXI Application (v6 API)
                 app = new PIXI.Application({
-                    resizeTo: window,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
                     backgroundAlpha: 0,
                     antialias: true,
                     resolution: window.devicePixelRatio || 1,
                     autoDensity: true,
                 });
-                canvasContainer.appendChild(app.view);
 
-                // Configure Live2D
-                PIXI.live2d.Live2DModel.registerTicker(app.ticker);
+                const canvas = app.view;
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.display = 'block';
+                canvasContainer.appendChild(canvas);
 
                 loadingText.textContent = 'Loading Alicia model...';
 
-                // Load the model
-                model = await PIXI.live2d.Live2DModel.from(MODEL_PATH, {
-                    autoInteract: true,
+                // Load the Live2D model
+                model = await Live2DModel.from(MODEL_PATH, {
+                    autoInteract: false,
                     autoUpdate: true,
-                    autoFocus: true,
                 });
 
-                // Scale and position the model
-                const scaleX = window.innerWidth / model.width * 0.8;
-                const scaleY = window.innerHeight / model.height * 0.9;
-                const scale = Math.min(scaleX, scaleY);
-                model.scale.set(scale);
-
+                // Scale model to fit screen
+                const scaleRatio = Math.min(
+                    window.innerWidth / model.width * 0.75,
+                    window.innerHeight / model.height * 0.85
+                );
+                model.scale.set(scaleRatio);
                 model.anchor.set(0.5, 0.5);
                 model.x = app.screen.width / 2;
-                model.y = app.screen.height / 2 + 50;
+                model.y = app.screen.height / 2 + 40;
 
                 app.stage.addChild(model);
 
-                // Handle window resize
-                window.addEventListener('resize', () => {
-                    const scaleX = window.innerWidth / (model.internalModel.originalWidth || model.width) * 0.8;
-                    const scaleY = window.innerHeight / (model.internalModel.originalHeight || model.height) * 0.9;
-                    const s = Math.min(scaleX, scaleY);
-                    model.scale.set(s);
-                    model.x = app.screen.width / 2;
-                    model.y = app.screen.height / 2 + 50;
+                // Enable mouse/touch tracking for model
+                app.stage.eventMode = 'static';
+                app.stage.hitArea = app.screen;
+
+                model.interactive = true;
+                model.buttonMode = true;
+                model.on('pointerdown', (hitAreas) => {
+                    playRandomMotion();
+                    showBubble('أهلاً! أنا أليشيا');
                 });
 
-                // Enable interaction (mouse tracking)
-                model.on('hit', (hitAreas) => {
-                    if (hitAreas.includes('Head')) {
-                        playRandomMotion();
-                        showBubble('أهلاً! أنا أليشيا 💕');
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    app.renderer.resize(window.innerWidth, window.innerHeight);
+                    const newScale = Math.min(
+                        window.innerWidth / (model.internalModel.originalWidth || model.width) * 0.75,
+                        window.innerHeight / (model.internalModel.originalHeight || model.height) * 0.85
+                    );
+                    model.scale.set(newScale);
+                    model.x = app.screen.width / 2;
+                    model.y = app.screen.height / 2 + 40;
+                });
+
+                // Track mouse for model to follow
+                document.addEventListener('mousemove', (e) => {
+                    if (model && model.internalModel) {
+                        const rect = canvas.getBoundingClientRect();
+                        const x = (e.clientX - rect.left) / rect.width;
+                        const y = (e.clientY - rect.top) / rect.height;
+                        model.focus(x * model.internalModel.originalWidth, y * model.internalModel.originalHeight);
                     }
                 });
 
-                // Start idle motion
-                setTimeout(() => {
-                    playIdleMotion();
-                    hideLoading();
-                }, 1500);
+                document.addEventListener('touchmove', (e) => {
+                    if (model && model.internalModel && e.touches.length > 0) {
+                        const touch = e.touches[0];
+                        const rect = canvas.getBoundingClientRect();
+                        const x = (touch.clientX - rect.left) / rect.width;
+                        const y = (touch.clientY - rect.top) / rect.height;
+                        model.focus(x * model.internalModel.originalWidth, y * model.internalModel.originalHeight);
+                    }
+                });
 
-                // Add subtle breathing/idle animation
-                startIdleAnimation();
+                // Hide loading screen
+                setTimeout(() => {
+                    hideLoading();
+                    playRandomMotion();
+                }, 1000);
+
+                // Periodic idle animation
+                setInterval(() => {
+                    if (!isSpeaking && model) {
+                        if (Math.random() > 0.5) {
+                            playRandomMotion();
+                        }
+                    }
+                }, 10000);
+
+                console.log('Live2D model loaded successfully!');
 
             } catch (error) {
                 console.error('Live2D Error:', error);
-                loadingText.textContent = 'Error loading model: ' + error.message;
-            }
-        }
-
-        function startIdleAnimation() {
-            // The physics engine handles idle animation automatically
-            // We add periodic motion switching for liveliness
-            setInterval(() => {
-                if (!isSpeaking && model) {
-                    // Subtle random motion for liveliness
-                    if (Math.random() > 0.6) {
-                        playIdleMotion();
-                    }
-                }
-            }, 8000);
-        }
-
-        function playIdleMotion() {
-            if (!model) return;
-            try {
-                model.motion('Idle');
-            } catch(e) {
-                // No idle group, try playing a random available motion
-                playRandomMotion();
+                showError('Failed to load model: ' + error.message);
             }
         }
 
         function playRandomMotion() {
             if (!model) return;
             try {
-                // Play motions from the default group
-                model.motion('');
+                const motionManager = model.internalModel.motionManager;
+                if (motionManager) {
+                    model.motion('');
+                }
             } catch(e) {
-                console.log('No motions available');
-            }
-        }
-
-        function playTalkMotion() {
-            if (!model) return;
-            try {
-                model.motion('');
-            } catch(e) {
-                // No talk-specific motion
+                // Motions may not be available
             }
         }
 
@@ -366,60 +405,41 @@
             let t = 0;
 
             lipSyncInterval = setInterval(() => {
-                if (!isSpeaking) return;
-                t += 0.15;
+                if (!isSpeaking || !model) return;
+                t += 0.12;
 
-                // Simulate natural mouth movement with varying amplitudes
-                const mouthOpen = 0.3 + Math.random() * 0.5;
-                const mouthForm = Math.sin(t) * 0.3;
+                const coreModel = model.internalModel.coreModel;
+                const mouthOpen = 0.2 + Math.random() * 0.6;
 
                 try {
-                    // Set mouth open parameter (primary lip sync)
-                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                    // Vowel-based lip sync for natural mouth movement
+                    const vowelPhase = (t * 1.8) % 5;
+                    const vowelIndex = Math.floor(vowelPhase);
+                    const blendFactor = vowelPhase - vowelIndex;
+                    const nextIndex = (vowelIndex + 1) % 5;
 
-                    // Vowel-based mouth shapes for more natural look
-                    // Cycle through vowels: A, I, U, E, O
-                    const vowelPhase = (t * 2) % 5;
-                    const vowels = [
-                        { id: 'ParamA', base: 1.0 },   // A - mouth wide open
-                        { id: 'ParamI', base: 0.3 },   // I - mouth stretched horizontally
-                        { id: 'ParamU', base: 0.2 },   // U - mouth rounded
-                        { id: 'ParamE', base: 0.6 },   // E - mouth stretched
-                        { id: 'ParamO', base: 0.8 },   // O - mouth rounded wide
-                    ];
+                    const vowelParams = ['ParamA', 'ParamI', 'ParamU', 'ParamE', 'ParamO'];
 
-                    const activeVowel = Math.floor(vowelPhase);
-                    const blendFactor = vowelPhase - activeVowel;
-                    const nextVowel = (activeVowel + 1) % 5;
+                    // Reset all vowel parameters
+                    for (const vp of vowelParams) {
+                        coreModel.setParameterValueById(vp, 0);
+                    }
 
-                    // Reset all vowel params
-                    vowels.forEach(v => {
-                        model.internalModel.coreModel.setParameterValueById(v.id, 0);
-                    });
+                    // Blend between two vowels for smooth transition
+                    const activeVal = (1.0 - blendFactor) * mouthOpen;
+                    const nextVal = blendFactor * mouthOpen * 0.6;
 
-                    // Set active vowel with blending
-                    const activeVal = 1.0 - blendFactor;
-                    const nextVal = blendFactor;
-
-                    model.internalModel.coreModel.setParameterValueById(
-                        vowels[activeVowel].id,
-                        mouthOpen * activeVal
-                    );
-                    model.internalModel.coreModel.setParameterValueById(
-                        vowels[nextVowel].id,
-                        mouthOpen * nextVal * 0.5
-                    );
-
-                    // Keep mouth open
-                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                    coreModel.setParameterValueById(vowelParams[vowelIndex], activeVal);
+                    coreModel.setParameterValueById(vowelParams[nextIndex], nextVal);
+                    coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
 
                 } catch (e) {
-                    // Model parameter not found - fallback to basic mouth
+                    // Fallback: basic mouth open/close
                     try {
-                        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
+                        coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen);
                     } catch(e2) {}
                 }
-            }, 80); // 80ms interval for smooth animation (~12.5 fps mouth movement)
+            }, 75);
         }
 
         function stopLipSync() {
@@ -429,30 +449,27 @@
                 lipSyncInterval = null;
             }
 
-            // Gradually close mouth
+            // Smoothly close mouth
             if (model) {
-                let closeStep = 0;
-                const closeMouth = setInterval(() => {
-                    closeStep += 0.1;
+                let step = 0;
+                const closeInterval = setInterval(() => {
+                    step += 0.15;
+                    const closeVal = Math.max(0, 1 - step);
                     try {
-                        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', Math.max(0, 1 - closeStep));
-                        model.internalModel.coreModel.setParameterValueById('ParamA', 0);
-                        model.internalModel.coreModel.setParameterValueById('ParamI', 0);
-                        model.internalModel.coreModel.setParameterValueById('ParamU', 0);
-                        model.internalModel.coreModel.setParameterValueById('ParamE', 0);
-                        model.internalModel.coreModel.setParameterValueById('ParamO', 0);
+                        const cm = model.internalModel.coreModel;
+                        cm.setParameterValueById('ParamMouthOpenY', closeVal);
+                        cm.setParameterValueById('ParamA', 0);
+                        cm.setParameterValueById('ParamI', 0);
+                        cm.setParameterValueById('ParamU', 0);
+                        cm.setParameterValueById('ParamE', 0);
+                        cm.setParameterValueById('ParamO', 0);
                     } catch(e) {}
-
-                    if (closeStep >= 1) {
-                        clearInterval(closeMouth);
-                    }
-                }, 30);
+                    if (step >= 1) clearInterval(closeInterval);
+                }, 25);
             }
         }
 
         // ==================== AI CHAT ====================
-        let chatMemory = [];
-
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             try {
@@ -480,7 +497,7 @@
             return new Promise((resolve) => {
                 updateStatus('Speaking...');
                 startLipSync();
-                playTalkMotion();
+                playRandomMotion();
 
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'ar-SA';
@@ -489,14 +506,12 @@
 
                 utterance.onend = () => {
                     stopLipSync();
-                    playIdleMotion();
                     updateStatus('Ready');
                     resolve();
                 };
 
                 utterance.onerror = () => {
                     stopLipSync();
-                    playIdleMotion();
                     updateStatus('Ready');
                     resolve();
                 };
@@ -532,7 +547,6 @@
             };
 
             recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
                 micBtn.classList.remove('recording');
                 micBtn.disabled = false;
                 sendBtn.disabled = false;
@@ -549,7 +563,6 @@
         // ==================== MAIN CONVERSATION FLOW ====================
         async function processUserInput(text) {
             if (!text.trim()) return;
-
             sendBtn.disabled = true;
             micBtn.disabled = true;
 
@@ -570,9 +583,7 @@
         function showBubble(text) {
             speechBubble.textContent = text;
             speechBubble.classList.add('visible');
-            setTimeout(() => {
-                speechBubble.classList.remove('visible');
-            }, 8000);
+            setTimeout(() => speechBubble.classList.remove('visible'), 8000);
         }
 
         function updateStatus(text) {
@@ -607,7 +618,7 @@
             if (recognition) {
                 recognition.start();
             } else {
-                showBubble('Speech recognition is not supported in this browser. Please type a message instead.');
+                showBubble('Speech recognition is not supported in this browser. Please type a message.');
             }
         });
 
