@@ -307,12 +307,12 @@
                 return;
             }
             
-            // Test the API key
             saveApiBtn.disabled = true;
             saveApiBtn.textContent = 'جاري الاختبار...';
             
             try {
-                const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+                // Test with gemini-2.0-flash which is more likely to be available
+                const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
                 const response = await fetch(testUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -327,8 +327,7 @@
                     apiModal.classList.add('hidden');
                     location.reload();
                 } else {
-                    const errorData = await response.json();
-                    apiError.textContent = 'مفتاح API غير صحيح أو منتهي الصلاحية. تأكد من صحته.';
+                    apiError.textContent = 'مفتاح API غير صحيح أو لا يدعم النماذج المطلوبة.';
                     apiError.style.display = 'block';
                 }
             } catch (e) {
@@ -436,7 +435,8 @@
             }
             updateStatus('جاري التفكير...');
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+                // Use gemini-2.0-flash as it's the latest stable and likely available
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -452,10 +452,10 @@
                 if (!response.ok) {
                     const errorData = await response.json();
                     console.error('API Error:', errorData);
-                    if (response.status === 400 || response.status === 403) {
+                    if (response.status === 400 || response.status === 403 || response.status === 404) {
                         localStorage.removeItem('GEMINI_API_KEY');
                         apiModal.classList.remove('hidden');
-                        return "مفتاح API غير صحيح أو منتهي الصلاحية. يرجى إدخال مفتاح جديد.";
+                        return "مفتاح API غير صحيح أو لا يدعم النموذج المطلوب. يرجى إدخال مفتاح جديد.";
                     }
                     return "عذراً، حدث خطأ في الخادم. حاول لاحقاً.";
                 }
@@ -516,7 +516,6 @@
             
             recognition.onresult = async (event) => {
                 const text = event.results[0][0].transcript;
-                // لا نعرض النص في صندوق الإدخال - نرسل مباشرة
                 micBtn.classList.remove('recording');
                 await processUserInput(text);
             };
