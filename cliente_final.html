@@ -301,14 +301,29 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + text }] }]
+                        contents: [{ 
+                            role: "user",
+                            parts: [{ text: SYSTEM_PROMPT + "\n\nUser: " + text }] 
+                        }]
                     })
                 });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Gemini API Error:', errorData);
+                    if (response.status === 400) return "خطأ: طلب غير صالح. قد يكون المفتاح غير صحيح.";
+                    if (response.status === 429) return "خطأ: تم تجاوز حد الطلبات. يرجى الانتظار قليلاً.";
+                    return "حدث خطأ في الاتصال بـ Gemini (كود: " + response.status + ")";
+                }
+
                 const data = await response.json();
-                return data.candidates[0].content.parts[0].text;
+                if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+                    return data.candidates[0].content.parts[0].text;
+                }
+                return "لم أستطع الحصول على رد صحيح من الخادم.";
             } catch (e) {
-                console.error('Gemini Error:', e);
-                return "عذراً، واجهت مشكلة في التفكير.";
+                console.error('Gemini Network Error:', e);
+                return "خطأ في الاتصال بالإنترنت. يرجى التأكد من اتصالك.";
             }
         }
 

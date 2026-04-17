@@ -417,24 +417,37 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        inputs: `<|system|>\n${SYSTEM_PROMPT}\n<|user|>\n${userText}\n<|assistant|>\n`,
-                        parameters: { max_new_tokens: 150, return_full_text: false }
+                        inputs: userText,
+                        parameters: { 
+                            max_new_tokens: 150, 
+                            return_full_text: false,
+                            wait_for_model: true
+                        }
                     })
                 });
 
                 if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    console.error('HF Error:', err);
+                    let errorMsg = "";
+                    try {
+                        const err = await response.json();
+                        console.error('HF Error Details:', err);
+                        errorMsg = err.error || "";
+                    } catch (e) {}
+
                     if (response.status === 401) return "خطأ: مفتاح API غير صالح. يرجى التأكد من المفتاح.";
                     if (response.status === 403) return "خطأ: هذا النموذج يتطلب موافقة من موقع Hugging Face. جرب نموذج Qwen.";
                     if (response.status === 503) return "النموذج قيد التحميل حالياً، يرجى المحاولة بعد ثوانٍ...";
-                    return "حدث خطأ في الاتصال بـ Hugging Face. (كود: " + response.status + ")";
+                    if (response.status === 429) return "خطأ: تم تجاوز حد الطلبات المسموح به. يرجى المحاولة لاحقاً.";
+                    return `حدث خطأ في الاتصال (كود: ${response.status}). ${errorMsg}`;
                 }
 
                 const data = await response.json();
                 let result = "";
-                if (Array.isArray(data)) result = data[0]?.generated_text || "";
-                else result = data.generated_text || "";
+                if (Array.isArray(data)) {
+                    result = data[0]?.generated_text || "";
+                } else {
+                    result = data.generated_text || "";
+                }
                 
                 // Clean up response if it contains prompt tags
                 result = result.replace(/<\|.*?\|>/g, '').trim();
