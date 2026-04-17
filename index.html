@@ -238,18 +238,19 @@
     <div id="api-modal">
         <div class="modal-content">
             <h2>إعدادات Alisha</h2>
-            <p>ادخل المفتاح الاتي الان الخاص بموقع huggingface:</p>
+            <p>ادخل مفتاح Hugging Face الخاص بك (يبدأ بـ hf_):</p>
             <input type="password" id="hf-api-key" placeholder="hf_..." />
             
-            <p>نموذج الزكاه الصناعي:</p>
+            <p>اختر نموذج الذكاء الاصطناعي:</p>
             <select id="ai-model-select">
-                <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct</option>
-                <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 3B</option>
+                <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 7B (موصى به - سريع ومفتوح)</option>
+                <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B Instruct (يتطلب موافقة)</option>
+                <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 3B (يتطلب موافقة)</option>
                 <option value="HuggingFaceH4/zephyr-7b-beta">Zephyr 7B Beta</option>
                 <option value="microsoft/Phi-3-mini-4k-instruct">Microsoft Phi-3 Mini</option>
             </select>
             
-            <button id="save-settings-btn">حفظ</button>
+            <button id="save-settings-btn">حفظ وتفعيل</button>
             <p id="api-error" style="color: #ff6b9d; margin-top: 10px; display: none;"></p>
         </div>
     </div>
@@ -278,9 +279,9 @@
     (async function() {
         const MODEL_PATH = './models/kei_vowels_pro/kei_vowels_pro.model3.json';
         let HF_API_KEY = localStorage.getItem('HF_API_KEY') || '';
-        let SELECTED_MODEL = localStorage.getItem('SELECTED_MODEL') || 'mistralai/Mistral-7B-Instruct-v0.3';
+        let SELECTED_MODEL = localStorage.getItem('SELECTED_MODEL') || 'Qwen/Qwen2.5-7B-Instruct';
         
-        const SYSTEM_PROMPT = "أنتِ 'اليشيا' (Alisha)، مساعدة ذكية ولطيفة بهيئة فتاة أنمي. ردي دائماً باللغة العربية بأسلوب مهذب وقصير (جملتين كحد أقصى).";
+        const SYSTEM_PROMPT = "أنتِ 'اليشيا' (Alisha)، مساعدة ذكية ولطيفة بهيئة فتاة أنمي. ردي دائماً باللغة العربية بأسلوب مهذب وقصير (جملتين كحد أقصى). لا تذكري أنكِ نموذج ذكاء اصطناعي.";
 
         const apiModal = document.getElementById('api-modal');
         const hfKeyInput = document.getElementById('hf-api-key');
@@ -302,12 +303,10 @@
         let isSpeaking = false;
         let lipSyncInterval = null;
 
-        // Check if libraries are loaded
         function checkLibraries() {
             return typeof PIXI !== 'undefined' && typeof Live2DCubismCore !== 'undefined';
         }
 
-        // Initialize Live2D
         async function initLive2D() {
             if (!checkLibraries()) {
                 showError('فشل تحميل المكتبات الأساسية. يرجى تحديث الصفحة.');
@@ -330,9 +329,9 @@
                     autoDensity: true,
                 });
 
+                canvasContainer.innerHTML = '';
                 canvasContainer.appendChild(app.view);
 
-                // Load model with timeout
                 const modelPromise = Live2DModel.from(MODEL_PATH, {
                     autoInteract: false,
                     autoUpdate: true,
@@ -418,15 +417,18 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        inputs: `<s>[INST] ${SYSTEM_PROMPT}\n\nالمستخدم: ${userText} [/INST]`,
-                        parameters: { max_new_tokens: 100, return_full_text: false }
+                        inputs: `<|system|>\n${SYSTEM_PROMPT}\n<|user|>\n${userText}\n<|assistant|>\n`,
+                        parameters: { max_new_tokens: 150, return_full_text: false }
                     })
                 });
 
                 if (!response.ok) {
                     const err = await response.json().catch(() => ({}));
                     console.error('HF Error:', err);
-                    return "حدث خطأ في الاتصال بـ Hugging Face.";
+                    if (response.status === 401) return "خطأ: مفتاح API غير صالح. يرجى التأكد من المفتاح.";
+                    if (response.status === 403) return "خطأ: هذا النموذج يتطلب موافقة من موقع Hugging Face. جرب نموذج Qwen.";
+                    if (response.status === 503) return "النموذج قيد التحميل حالياً، يرجى المحاولة بعد ثوانٍ...";
+                    return "حدث خطأ في الاتصال بـ Hugging Face. (كود: " + response.status + ")";
                 }
 
                 const data = await response.json();
@@ -434,10 +436,13 @@
                 if (Array.isArray(data)) result = data[0]?.generated_text || "";
                 else result = data.generated_text || "";
                 
-                return result.trim() || "لم أستطع فهم ذلك.";
+                // Clean up response if it contains prompt tags
+                result = result.replace(/<\|.*?\|>/g, '').trim();
+                
+                return result || "لم أستطع فهم ذلك.";
             } catch (e) {
                 console.error('AI Error:', e);
-                return "خطأ في الاتصال.";
+                return "خطأ في الاتصال بالإنترنت.";
             }
         }
 
@@ -530,7 +535,6 @@
             statusText.textContent = text;
         }
 
-        // Event listeners
         sendBtn.addEventListener('click', () => {
             const text = textInput.value.trim();
             if (text) {
@@ -567,6 +571,12 @@
                 return;
             }
             
+            if (!key.startsWith('hf_')) {
+                apiError.textContent = 'المفتاح يجب أن يبدأ بـ hf_';
+                apiError.style.display = 'block';
+                return;
+            }
+            
             localStorage.setItem('HF_API_KEY', key);
             localStorage.setItem('SELECTED_MODEL', model);
             HF_API_KEY = key;
@@ -575,10 +585,11 @@
             apiModal.classList.add('hidden');
             if (!app) {
                 initLive2D();
+            } else {
+                updateStatus('تم تحديث الإعدادات');
             }
         });
 
-        // Load saved values
         if (HF_API_KEY) {
             hfKeyInput.value = HF_API_KEY;
             apiModal.classList.add('hidden');
