@@ -298,49 +298,29 @@
         const sendBtn = document.getElementById('send-btn');
         const canvasContainer = document.getElementById('canvas-container');
 
-        // Load saved values
-        if (HF_API_KEY) {
-            hfKeyInput.value = HF_API_KEY;
-            apiModal.classList.add('hidden');
-            initLive2D();
-        }
-        modelSelect.value = SELECTED_MODEL;
-
-        saveSettingsBtn.addEventListener('click', () => {
-            const key = hfKeyInput.value.trim();
-            const model = modelSelect.value;
-            
-            if (!key) {
-                apiError.textContent = 'يرجى إدخال مفتاح API';
-                apiError.style.display = 'block';
-                return;
-            }
-            
-            localStorage.setItem('HF_API_KEY', key);
-            localStorage.setItem('SELECTED_MODEL', model);
-            HF_API_KEY = key;
-            SELECTED_MODEL = model;
-            
-            apiModal.classList.add('hidden');
-            if (!app) initLive2D();
-            else location.reload();
-        });
-
-        function showError(msg) {
-            loadingOverlay.classList.remove('hidden');
-            loadingText.textContent = 'خطأ';
-            loadingError.textContent = msg;
-            loadingError.style.display = 'block';
-        }
-
-        const Live2DModel = PIXI.live2d.Live2DModel;
         let app, model;
         let isSpeaking = false;
         let lipSyncInterval = null;
 
+        // Check if libraries are loaded
+        function checkLibraries() {
+            return typeof PIXI !== 'undefined' && typeof Live2DCubismCore !== 'undefined';
+        }
+
+        // Initialize Live2D
         async function initLive2D() {
+            if (!checkLibraries()) {
+                showError('فشل تحميل المكتبات الأساسية. يرجى تحديث الصفحة.');
+                return;
+            }
+
             loadingOverlay.classList.remove('hidden');
+            loadingText.textContent = 'جاري تحميل اليشيا...';
+            loadingError.style.display = 'none';
+
             try {
+                const Live2DModel = PIXI.live2d.Live2DModel;
+
                 app = new PIXI.Application({
                     width: window.innerWidth,
                     height: window.innerHeight,
@@ -352,10 +332,17 @@
 
                 canvasContainer.appendChild(app.view);
 
-                model = await Live2DModel.from(MODEL_PATH, {
+                // Load model with timeout
+                const modelPromise = Live2DModel.from(MODEL_PATH, {
                     autoInteract: false,
                     autoUpdate: true,
                 });
+
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('انتهت مهلة تحميل النموذج')), 15000)
+                );
+
+                model = await Promise.race([modelPromise, timeoutPromise]);
 
                 const scaleRatio = Math.min(
                     window.innerWidth / model.width * 0.75,
@@ -369,6 +356,7 @@
                 app.stage.addChild(model);
 
                 window.addEventListener('resize', () => {
+                    if (!app) return;
                     app.renderer.resize(window.innerWidth, window.innerHeight);
                     const newScale = Math.min(
                         window.innerWidth / (model.internalModel.originalWidth || model.width) * 0.75,
@@ -382,11 +370,19 @@
                 setTimeout(() => {
                     loadingOverlay.classList.add('hidden');
                     updateStatus('جاهز');
-                }, 1000);
+                }, 500);
 
             } catch (error) {
-                showError('فشل تحميل النموذج: ' + error.message);
+                console.error('Init error:', error);
+                showError('خطأ في التحميل: ' + error.message);
             }
+        }
+
+        function showError(msg) {
+            loadingOverlay.classList.remove('hidden');
+            loadingText.textContent = 'خطأ';
+            loadingError.textContent = msg;
+            loadingError.style.display = 'block';
         }
 
         function startLipSync() {
@@ -404,7 +400,7 @@
             isSpeaking = false;
             if (lipSyncInterval) clearInterval(lipSyncInterval);
             try {
-                model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
+                if (model) model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
             } catch (e) {}
         }
 
@@ -428,15 +424,15 @@
                 });
 
                 if (!response.ok) {
-                    const err = await response.json();
+                    const err = await response.json().catch(() => ({}));
                     console.error('HF Error:', err);
                     return "حدث خطأ في الاتصال بـ Hugging Face.";
                 }
 
                 const data = await response.json();
                 let result = "";
-                if (Array.isArray(data)) result = data[0].generated_text;
-                else result = data.generated_text;
+                if (Array.isArray(data)) result = data[0]?.generated_text || "";
+                else result = data.generated_text || "";
                 
                 return result.trim() || "لم أستطع فهم ذلك.";
             } catch (e) {
@@ -534,6 +530,7 @@
             statusText.textContent = text;
         }
 
+        // Event listeners
         sendBtn.addEventListener('click', () => {
             const text = textInput.value.trim();
             if (text) {
@@ -559,6 +556,36 @@
                 alert('متصفحك لا يدعم التعرف على الكلام.');
             }
         });
+
+        saveSettingsBtn.addEventListener('click', () => {
+            const key = hfKeyInput.value.trim();
+            const model = modelSelect.value;
+            
+            if (!key) {
+                apiError.textContent = 'يرجى إدخال مفتاح API';
+                apiError.style.display = 'block';
+                return;
+            }
+            
+            localStorage.setItem('HF_API_KEY', key);
+            localStorage.setItem('SELECTED_MODEL', model);
+            HF_API_KEY = key;
+            SELECTED_MODEL = model;
+            
+            apiModal.classList.add('hidden');
+            if (!app) {
+                initLive2D();
+            }
+        });
+
+        // Load saved values
+        if (HF_API_KEY) {
+            hfKeyInput.value = HF_API_KEY;
+            apiModal.classList.add('hidden');
+            initLive2D();
+        }
+        modelSelect.value = SELECTED_MODEL;
+
     })();
     </script>
 </body>
