@@ -1,0 +1,19 @@
+{
+    "Type": "Live2D Expression",
+    "Parameters": [
+        {
+            "Id": "shrngqi",
+            "Value": 1.0,
+            "Blend": "Add"
+        }
+    ]
+}{
+    "Type": "Live2D Expression",
+    "Parameters": [
+        {
+            "Id": "tibi",
+            "Value": 1.0,
+            "Blend": "Add"
+        }
+    ]
+}
