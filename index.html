@@ -182,6 +182,14 @@
             border-radius: 28px;
             padding: 10px 14px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,107,157,0.1);
+            /* مخفي - يظهر بالضغط على زر الإعدادات */
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #controls-area.visible {
+            opacity: 1;
+            pointer-events: all;
         }
 
         #text-input {
@@ -222,6 +230,7 @@
         #stop-btn.visible { display: flex; }
 
         #status-bar {
+            display: none;
             position: fixed;
             bottom: 110px;
             left: 50%;
@@ -525,6 +534,7 @@
     <div id="reply-bubble" style="display:none;"></div>
 
     <div id="top-controls">
+        <button class="glass-btn" id="chat-toggle-btn" title="محادثة">💬</button>
         <button class="glass-btn" id="settings-btn" title="الإعدادات">⚙️</button>
     </div>
 
@@ -821,6 +831,17 @@
             });
         }
 
+        // زر إظهار/إخفاء صندوق الكتابة
+        const chatToggleBtn = document.getElementById('chat-toggle-btn');
+        const controlsArea = document.getElementById('controls-area');
+        let chatVisible = false;
+        chatToggleBtn.addEventListener('click', () => {
+            chatVisible = !chatVisible;
+            controlsArea.classList.toggle('visible', chatVisible);
+            chatToggleBtn.textContent = chatVisible ? '✖️' : '💬';
+            if (chatVisible) setTimeout(() => textInput.focus(), 100);
+        });
+
         settingsBtn.addEventListener('click', () => {
             sLanguage.value = CURRENT_LANGUAGE;
             sAvatar.value = CURRENT_AVATAR;
@@ -900,11 +921,15 @@
 
         function updateLive2DScale() {
             if (!live2dModel) return;
-            const scale = Math.min(window.innerWidth / live2dModel.width * 0.8, window.innerHeight / live2dModel.height * 0.9);
+            // تكبير الأفاتار ليملأ الشاشة بشكل أفضل
+            const scale = Math.min(
+                window.innerWidth / live2dModel.width * 1.1,
+                window.innerHeight / live2dModel.height * 1.0
+            );
             live2dModel.scale.set(scale);
             live2dModel.anchor.set(0.5, 0.5);
             live2dModel.x = window.innerWidth / 2;
-            live2dModel.y = window.innerHeight / 2;
+            live2dModel.y = window.innerHeight / 2 - 20;
         }
 
         async function initAvatar() {
@@ -959,14 +984,14 @@
                 threeScene = new THREE.Scene();
                 threeClock = new THREE.Clock();
                 threeCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-                threeCamera.position.set(0, 1.4, 1.5);
+                threeCamera.position.set(0, 1.2, 1.2);
                 threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 threeRenderer.setSize(window.innerWidth, window.innerHeight);
                 threeRenderer.setPixelRatio(window.devicePixelRatio);
                 threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
                 canvasContainer.appendChild(threeRenderer.domElement);
                 const controls = new OrbitControls(threeCamera, threeRenderer.domElement);
-                controls.target.set(0, 1.2, 0);
+                controls.target.set(0, 1.0, 0);
                 controls.update();
                 threeScene.add(new THREE.AmbientLight(0xffffff, 0.5));
                 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -989,8 +1014,38 @@
                     if (currentVrm) {
                         currentVrm.update(dt);
                         const time = threeClock.elapsedTime;
-                        currentVrm.humanoid.getBoneNode('spine').rotation.z = Math.sin(time * 0.5) * 0.02;
-                        currentVrm.humanoid.getBoneNode('head').rotation.y = Math.sin(time * 0.8) * 0.05;
+                        const bones = currentVrm.humanoid;
+
+                        // حركة تنفس طبيعية
+                        try { bones.getBoneNode('chest').rotation.x = Math.sin(time * 0.8) * 0.015; } catch(e){}
+                        try { bones.getBoneNode('spine').rotation.z = Math.sin(time * 0.4) * 0.015; } catch(e){}
+
+                        // تأرجح الرأس
+                        try {
+                            bones.getBoneNode('head').rotation.y = Math.sin(time * 0.6) * 0.08;
+                            bones.getBoneNode('head').rotation.z = Math.sin(time * 0.4) * 0.03;
+                        } catch(e){}
+
+                        // تحريك الذراعين (حل مشكلة T-pose)
+                        try {
+                            bones.getBoneNode('leftUpperArm').rotation.z = 1.1 + Math.sin(time * 0.5) * 0.05;
+                            bones.getBoneNode('rightUpperArm').rotation.z = -1.1 - Math.sin(time * 0.5) * 0.05;
+                            bones.getBoneNode('leftLowerArm').rotation.z = 0.3 + Math.sin(time * 0.7) * 0.03;
+                            bones.getBoneNode('rightLowerArm').rotation.z = -0.3 - Math.sin(time * 0.7) * 0.03;
+                        } catch(e){}
+
+                        // تحريك الأصابع
+                        try {
+                            ['leftHand','rightHand'].forEach(hand => {
+                                bones.getBoneNode(hand).rotation.z = Math.sin(time * 1.2) * 0.02;
+                            });
+                        } catch(e){}
+
+                        // إيماء العينين (blinking)
+                        try {
+                            const blinkVal = Math.sin(time * 3.5) > 0.98 ? 1 : 0;
+                            currentVrm.expressionManager?.setValue('blink', blinkVal);
+                        } catch(e){}
                     }
                     threeRenderer.render(threeScene, threeCamera);
                 };

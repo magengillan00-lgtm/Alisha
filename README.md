@@ -15,52 +15,58 @@
 ## 🎭 الأفاتارات المتاحة
 
 <div align="center">
+
+### أفاتارات Live2D (ثنائية الأبعاد)
+
 <table>
 <tr>
-<td align="center">
-<img src="assets/models/2d/kei_vowels_pro/kei_vowels_pro.2048/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Kei</b><br/>
-<sub>Live2D 2D</sub>
+<td align="center" width="180">
+<img src="assets/previews/kei.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>🟢 Kei</b><br/>
+<sub>شعر أخضر • زي مدرسي</sub>
 </td>
-<td align="center">
-<img src="assets/models/2d/Epsilon_free/runtime/Epsilon_free.2048/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Epsilon</b><br/>
-<sub>Live2D 2D</sub>
+<td align="center" width="180">
+<img src="assets/previews/epsilon.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>⬜ Epsilon</b><br/>
+<sub>شعر أبيض قصير • أنيق</sub>
 </td>
-<td align="center">
-<img src="assets/models/2d/Frieren/Frieren.8192/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Frieren</b><br/>
-<sub>Live2D 2D</sub>
-</td>
-<td align="center">
-<img src="assets/models/2d/haru/runtime/haru.1024/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Haru</b><br/>
-<sub>Live2D 2D</sub>
+<td align="center" width="180">
+<img src="assets/previews/frieren.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>🪄 Frieren</b><br/>
+<sub>شعر أبيض • مجوسة</sub>
 </td>
 </tr>
 <tr>
-<td align="center">
-<img src="assets/models/2d/tsumiki/runtime/tsumiki.2048/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Tsumiki</b><br/>
-<sub>Live2D 2D</sub>
+<td align="center" width="180">
+<img src="assets/previews/haru.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>🌸 Haru</b><br/>
+<sub>شعر وردي • فستان أصفر</sub>
 </td>
-<td align="center">
-<img src="assets/models/2d/chino/chino.4096/texture_00.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>香風智乃 Chino</b><br/>
-<sub>Live2D 2D</sub>
+<td align="center" width="180">
+<img src="assets/previews/tsumiki.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>🎀 Tsumiki</b><br/>
+<sub>شعر أسود • فستان أبيض</sub>
 </td>
-<td align="center">
-<img src="alicia_avatar.png" width="120" height="120" style="border-radius:12px;object-fit:cover;"/><br/>
-<b>Waifu</b><br/>
-<sub>VRM 3D</sub>
-</td>
-<td align="center">
-🔜<br/>
-<b>قريباً</b><br/>
-<sub>More Coming</sub>
+<td align="center" width="180">
+<img src="assets/previews/chino.jpg" width="160" style="border-radius:16px;border:2px solid #ff6b9d;"/><br/><br/>
+<b>🐰 香風智乃 Chino</b><br/>
+<sub>من أنمي ستيل هاوس</sub>
 </td>
 </tr>
 </table>
+
+### أفاتار VRM (ثلاثي الأبعاد)
+
+<table>
+<tr>
+<td align="center">
+<img src="assets/previews/waifu3d.jpg" width="200" style="border-radius:16px;border:3px solid #7c4dff;"/><br/><br/>
+<b>🐇 Waifu 3D</b><br/>
+<sub>أفاتار VRM • أذنان أرنب • حركات كاملة</sub>
+</td>
+</tr>
+</table>
+
 </div>
 
 ---
@@ -68,17 +74,20 @@
 ## ✨ المميزات
 
 ### 🤖 ذكاء اصطناعي متعدد المزودين
-| المزود | الموديل | الحالة |
+| المزود | الموديل | الأولوية |
 |--------|---------|--------|
-| 🟢 HuggingFace Space | Gemini 2.0 Flash | الأساسي |
-| 🔵 KiloClaw Backend | Llama 3.3 70B (Groq) | احتياطي |
-| 🟡 Groq Direct | Llama 3.3 70B | احتياطي ثانٍ |
+| 🟢 **Groq** | Llama 3.3 70B | افتراضي |
+| 🔵 **Gemini** | 2.0 Flash (HF Space) | احتياطي |
+| 🤖 **KiloClaw** | Backend Server | احتياطي ثانٍ |
+
+> يمكن التبديل بين المزودين من الإعدادات ⚙️
 
 ### 🎨 الواجهة
 - **أفاتارات Live2D** — حركات طبيعية وتحريك شفاه (Lip Sync)
-- **أفاتار 3D** (VRM) مع حركات ثلاثية الأبعاد
+- **أفاتار 3D (VRM)** — حركات جسم كاملة، تنفس، إيماء عيون
 - **3 خلفيات أنمي:** فضاء 🌌، حديقة سكورا 🌸، غرفة أنمي 🏠
-- تصميم زجاجي (Glass Morphism) أنيق
+- الأفاتار يملأ الشاشة كاملة بدون عوائق
+- زر 💬 لإظهار/إخفاء صندوق الكتابة عند الحاجة
 
 ### 🌐 دعم متعدد اللغات
 - 🇸🇦 العربية — ردود وصوت عربي كامل
@@ -91,16 +100,16 @@
 - تحريك شفاه الأفاتار مزامنةً مع الصوت
 
 ### ⚙️ الإعدادات
+- **تبديل مزود AI** — Groq / Gemini / KiloClaw
 - اختيار الموديل الذكي
 - تغيير اللغة والصوت
 - تغيير الأفاتار
 - تغيير الخلفية
-- حفظ الإعدادات تلقائياً
+- حفظ جميع الإعدادات تلقائياً
 
 ### 🔐 الأمان
-- المفاتيح محفوظة كـ **GitHub Secrets** ولا تظهر في الكود
+- المفاتيح محفوظة كـ **GitHub Secrets** (لا تظهر في الكود)
 - تُحقن تلقائياً عند النشر عبر **GitHub Actions**
-- Backend على خادم آمن (KiloClaw)
 
 ---
 
@@ -112,29 +121,23 @@
        ▼
 GitHub Pages (index.html)
        │
-       ├──▶ HuggingFace Space API (Gemini 2.0 Flash) ← الأساسي
-       │         └── GitHub Integration
-       │
-       ├──▶ KiloClaw Backend (Groq Llama 3.3) ← احتياطي 1
-       │
-       └──▶ Groq Direct API ← احتياطي 2
+       ├──▶ Groq API (Llama 3.3 70B) ◀── الافتراضي
+       ├──▶ HuggingFace Space (Gemini 2.0 Flash)
+       └──▶ KiloClaw Backend (خادم خاص)
 ```
 
 ---
 
-## 🛠️ التقنيات المستخدمة
+## 🛠️ التقنيات
 
 | التقنية | الاستخدام |
 |---------|-----------|
-| **Three.js** | رندر الأفاتار 3D |
-| **@pixiv/three-vrm** | تحميل نماذج VRM |
-| **PIXI.js + pixi-live2d-display** | رندر أفاتارات Live2D |
-| **Cubism SDK** | محرك Live2D |
-| **Web Speech API** | تحويل نص إلى صوت |
-| **Gemini 2.0 Flash** | الذكاء الاصطناعي الأساسي |
-| **Groq (Llama 3.3 70B)** | نموذج احتياطي |
-| **GitHub Actions** | حقن المفاتيح عند النشر |
-| **HuggingFace Spaces** | Backend API |
+| **Three.js + VRM** | أفاتار 3D |
+| **PIXI.js + Live2D** | أفاتارات 2D |
+| **Web Speech API** | نص إلى صوت |
+| **Gemini 2.0 Flash** | AI عبر HuggingFace |
+| **Groq Llama 3.3** | AI مباشر |
+| **GitHub Actions** | حقن المفاتيح |
 
 ---
 
@@ -142,53 +145,23 @@ GitHub Pages (index.html)
 
 ```
 Alisha/
-├── index.html                    # الملف الرئيسي
-├── memory.json                   # ذاكرة المحادثة
+├── index.html
 ├── assets/
 │   ├── models/
-│   │   ├── 2d/                   # أفاتارات Live2D
-│   │   │   ├── kei_vowels_pro/
-│   │   │   ├── Epsilon_free/
-│   │   │   ├── Frieren/
-│   │   │   ├── haru/
-│   │   │   ├── tsumiki/
-│   │   │   └── chino/
-│   │   └── 3d/                   # أفاتارات VRM
-│   │       ├── waifu.vrm
-│   │       ├── animations/       # حركات FBX
-│   │       └── backgrounds/      # خلفية HDR
-│   ├── audio/
-│   └── skills/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml            # GitHub Actions
-└── agents/                       # وحدات AI
+│   │   ├── 2d/  (kei, epsilon, frieren, haru, tsumiki, chino)
+│   │   └── 3d/  (waifu.vrm, animations/, backgrounds/)
+│   └── previews/  (صور الأفاتارات)
+└── .github/workflows/deploy.yml
 ```
 
 ---
 
-## 🚀 التشغيل
+<div align="center">
 
-الموقع يعمل مباشرة على GitHub Pages — لا يحتاج تثبيت أي شيء.
-
-**أول مرة:**
-1. افتح الموقع
-2. اختر الموديل الذكي، اللغة، الأفاتار، الخلفية
-3. اضغط "تشغيل أليشيا" 🌸
-
-**المرات التالية:** يبدأ تلقائياً بإعداداتك السابقة.
-
----
-
-## 👨‍💻 المطور
-
-**غيلان بن عقبة** — الملك الأحمر
-
-**الإصدار:** 2.0.0 — KiloClaw Edition  
+**المطور:** غيلان بن عقبة — الملك الأحمر  
+**الإصدار:** 2.1.0 — KiloClaw Edition  
 **آخر تحديث:** 2026-04-18
 
----
-
-<div align="center">
 مبني بـ ❤️ وقوة KiloClaw AI
+
 </div>
