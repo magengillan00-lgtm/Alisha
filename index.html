@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Alisha AI - Modern Glass Edition</title>
+    <title>Alisha AI - KiloClaw Edition</title>
 
     <style>
         :root {
@@ -24,6 +23,82 @@
             user-select: none;
             overscroll-behavior: none;
             touch-action: manipulation;
+        }
+
+        /* ── Backgrounds ── */
+        #bg-layer {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 0;
+            transition: opacity 0.8s ease;
+        }
+        /* bg-space: default animated gradient */
+        #bg-layer.bg-space {
+            background: radial-gradient(ellipse at 20% 50%, #1a0533 0%, #0f0c29 40%, #060420 100%);
+        }
+        #bg-layer.bg-space::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Ccircle cx='50' cy='80' r='1.5' fill='white' opacity='0.8'/%3E%3Ccircle cx='120' cy='30' r='1' fill='white' opacity='0.6'/%3E%3Ccircle cx='200' cy='120' r='2' fill='white' opacity='0.9'/%3E%3Ccircle cx='300' cy='60' r='1' fill='white' opacity='0.5'/%3E%3Ccircle cx='350' cy='200' r='1.5' fill='%23ff6b9d' opacity='0.7'/%3E%3Ccircle cx='80' cy='300' r='1' fill='white' opacity='0.6'/%3E%3Ccircle cx='250' cy='350' r='1.5' fill='white' opacity='0.8'/%3E%3Ccircle cx='380' cy='320' r='1' fill='%23a0c4ff' opacity='0.7'/%3E%3Ccircle cx='160' cy='260' r='2' fill='white' opacity='0.5'/%3E%3Ccircle cx='320' cy='140' r='1' fill='white' opacity='0.9'/%3E%3C/svg%3E") repeat;
+            animation: twinkle 4s ease-in-out infinite alternate;
+        }
+        @keyframes twinkle { 0% { opacity: 0.6; } 100% { opacity: 1; } }
+
+        /* bg-sakura: cherry blossom park */
+        #bg-layer.bg-sakura {
+            background: linear-gradient(180deg, #ffd6e8 0%, #ffb3d1 30%, #c8e6c9 60%, #81c784 100%);
+        }
+        #bg-layer.bg-sakura::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 200px 300px at 15% 80%, #4caf50 0%, transparent 70%),
+                radial-gradient(ellipse 250px 200px at 85% 75%, #388e3c 0%, transparent 70%),
+                radial-gradient(ellipse 180px 120px at 50% 65%, #ff80ab 0%, transparent 60%),
+                radial-gradient(ellipse 150px 100px at 25% 60%, #f48fb1 0%, transparent 60%);
+        }
+        #bg-layer.bg-sakura::after {
+            content: '🌸🌸🌸';
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 40px;
+            opacity: 0.3;
+            letter-spacing: 30px;
+            animation: fallPetals 6s ease-in-out infinite;
+        }
+        @keyframes fallPetals { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(15px); } }
+
+        /* bg-room: anime bedroom */
+        #bg-layer.bg-room {
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        #bg-layer.bg-room::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                /* window glow */
+                radial-gradient(ellipse 300px 400px at 15% 40%, rgba(135,206,250,0.15) 0%, transparent 70%),
+                /* desk lamp */
+                radial-gradient(ellipse 150px 200px at 80% 60%, rgba(255,200,100,0.12) 0%, transparent 60%),
+                /* floor */
+                linear-gradient(180deg, transparent 70%, rgba(30,20,50,0.8) 100%);
+        }
+        #bg-layer.bg-room::after {
+            content: '';
+            position: absolute;
+            /* window */
+            top: 8%; left: 5%;
+            width: 160px; height: 220px;
+            border: 4px solid rgba(135,206,250,0.4);
+            border-radius: 8px;
+            background: linear-gradient(180deg, rgba(135,206,250,0.08) 0%, rgba(30,100,200,0.06) 100%);
+            box-shadow: inset 0 0 30px rgba(135,206,250,0.1), 0 0 20px rgba(135,206,250,0.15);
         }
 
         #canvas-container {
@@ -58,7 +133,7 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Modern Glass Controls */
+        /* Glass Controls */
         #top-controls {
             position: fixed;
             top: 25px;
@@ -138,18 +213,10 @@
             box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         .action-btn:hover { background: var(--primary-color); border-color: var(--primary-color); transform: scale(1.05); }
-        .action-btn.recording {
-            background: #ff4444;
-            animation: pulse-red 1.5s infinite;
-        }
+        .action-btn.recording { background: #ff4444; animation: pulse-red 1.5s infinite; }
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.7); } 70% { box-shadow: 0 0 0 15px rgba(255,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); } }
 
-        #stop-btn {
-            background: rgba(255, 68, 68, 0.2);
-            border-color: #ff4444;
-            color: #ff4444;
-            display: none; /* Hidden by default */
-        }
+        #stop-btn { background: rgba(255,68,68,0.2); border-color: #ff4444; color: #ff4444; display: none; }
         #stop-btn.visible { display: flex; }
 
         #status-bar {
@@ -168,8 +235,8 @@
             border: 1px solid var(--glass-border);
         }
 
-        /* Modals */
-        #api-modal, #settings-modal {
+        /* ── Modals ── */
+        .modal-overlay {
             position: fixed;
             top: 0; left: 0;
             width: 100vw; height: 100vh;
@@ -181,43 +248,110 @@
             backdrop-filter: blur(8px);
         }
         .modal-content {
-            background: rgba(26, 26, 46, 0.95);
-            padding: 35px;
-            border-radius: 30px;
-            width: 90%;
-            max-width: 420px;
+            background: rgba(26, 26, 46, 0.97);
+            padding: 30px;
+            border-radius: 28px;
+            width: 92%;
+            max-width: 430px;
+            max-height: 90vh;
+            overflow-y: auto;
             text-align: center;
             border: 1px solid var(--primary-color);
             box-shadow: 0 0 40px rgba(255, 107, 157, 0.3);
             direction: rtl;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) transparent;
         }
-        .modal-content h2 { color: white; margin-bottom: 20px; font-weight: 600; }
-        .modal-content p { color: #aaa; margin-bottom: 15px; font-size: 14px; }
+        .modal-content h2 { color: white; margin-bottom: 18px; font-weight: 700; font-size: 20px; }
+        .modal-content .section-title { color: #ff6b9d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-align: right; }
         .modal-content input, .modal-content select {
             width: 100%;
-            padding: 14px;
-            margin-bottom: 20px;
-            border-radius: 15px;
+            padding: 13px 16px;
+            margin-bottom: 16px;
+            border-radius: 14px;
             border: 1px solid #333;
             background: #0f0c29;
             color: white;
-            font-size: 15px;
-            text-align: center;
+            font-size: 14px;
+            text-align: right;
             outline: none;
+            transition: border-color 0.2s;
         }
+        .modal-content input:focus, .modal-content select:focus { border-color: var(--primary-color); }
         .modal-content button {
             background: var(--primary-color);
             color: white;
             border: none;
-            padding: 14px;
-            border-radius: 15px;
+            padding: 13px;
+            border-radius: 14px;
             cursor: pointer;
             font-weight: bold;
             width: 100%;
+            font-size: 15px;
             transition: 0.3s;
+            margin-top: 4px;
         }
         .modal-content button:hover { background: #ff5080; transform: scale(1.02); }
+        .modal-content .btn-secondary { background: #2a2a4a; margin-top: 10px; }
+        .modal-content .btn-secondary:hover { background: #3a3a5a; }
         .hidden { display: none !important; }
+
+        /* Step indicators */
+        .steps { display: flex; gap: 6px; justify-content: center; margin-bottom: 20px; }
+        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #333; transition: background 0.3s; }
+        .step-dot.active { background: var(--primary-color); }
+        .step-dot.done { background: #4caf50; }
+
+        /* Voice list */
+        #voice-list { max-height: 160px; overflow-y: auto; margin-bottom: 16px; text-align: right; }
+        .voice-item {
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            border-radius: 10px;
+            background: #1a1a3a;
+            border: 1px solid #333;
+            cursor: pointer;
+            font-size: 13px;
+            color: #ccc;
+            transition: all 0.2s;
+            text-align: right;
+        }
+        .voice-item:hover, .voice-item.selected { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+
+        /* Model list */
+        #model-list-container { max-height: 180px; overflow-y: auto; margin-bottom: 16px; }
+        .model-item {
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            border-radius: 10px;
+            background: #1a1a3a;
+            border: 1px solid #333;
+            cursor: pointer;
+            font-size: 13px;
+            color: #ccc;
+            transition: all 0.2s;
+            text-align: right;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .model-item:hover, .model-item.selected { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .model-item .model-tag { font-size: 10px; opacity: 0.7; padding: 2px 6px; border-radius: 6px; background: rgba(255,255,255,0.1); }
+
+        /* Background selector */
+        .bg-options { display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
+        .bg-option {
+            width: 80px; height: 60px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: 2px solid #333;
+            transition: all 0.3s;
+            overflow: hidden;
+            position: relative;
+        }
+        .bg-option:hover, .bg-option.selected { border-color: var(--primary-color); transform: scale(1.05); }
+        .bg-option .bg-preview { width: 100%; height: 100%; }
+        .bg-option .bg-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 10px; text-align: center; padding: 3px; }
 
         @media (max-width: 600px) {
             #text-input { width: 180px; padding: 12px; }
@@ -227,49 +361,115 @@
 </head>
 <body>
 
-    <div id="api-modal">
+    <!-- Background Layer -->
+    <div id="bg-layer" class="bg-space"></div>
+
+    <!-- ── Setup Modal (Step 1: API Key) ── -->
+    <div id="setup-modal" class="modal-overlay">
         <div class="modal-content">
-            <h2>⚡ KiloClaw Edition</h2>
-            <p style="color:#aaffaa;">✅ أليشيا مدعومة بـ KiloClaw AI</p>
-            <p style="color:#ccc; font-size:13px;">لا تحتاج مفتاح API — الذكاء الاصطناعي يعمل من الخادم مباشرة.</p>
-            <p>اللغة الافتراضية:</p>
-            <select id="language-select">
-                <option value="ar">العربية</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
-            </select>
-            <p>الأفاتار:</p>
-            <select id="model-select">
-                <option value="kei">Kei (2D)</option>
-                <option value="epsilon">Epsilon (2D)</option>
-                <option value="frieren">Frieren (2D)</option>
-                <option value="waifu3d">Waifu (3D)</option>
-            </select>
-            <button id="save-settings-btn">تفعيل أليشيا</button>
-            <p id="api-error" style="color: #ff6b9d; margin-top: 10px; display: none;"></p>
+            <h2>⚡ Alisha AI</h2>
+            <div class="steps">
+                <div class="step-dot active" id="dot-1"></div>
+                <div class="step-dot" id="dot-2"></div>
+                <div class="step-dot" id="dot-3"></div>
+            </div>
+
+            <!-- Step 1: API Key -->
+            <div id="step-1">
+                <p class="section-title">🔑 أدخل مفتاح API</p>
+                <p style="color:#aaa;font-size:12px;margin-bottom:16px;">ادعم Groq (gsk_...) أو HuggingFace (hf_...) أو OpenRouter (sk-or-...)</p>
+                <input type="password" id="api-key-input" placeholder="الصق مفتاحك هنا..." autocomplete="off" />
+                <button id="verify-key-btn">التحقق من المفتاح →</button>
+                <p id="key-error" style="color:#ff6b9d;margin-top:10px;font-size:13px;display:none;"></p>
+            </div>
+
+            <!-- Step 2: Model + Language + Avatar -->
+            <div id="step-2" class="hidden">
+                <p class="section-title">🤖 اختر الموديل</p>
+                <div id="model-list-container">
+                    <div style="color:#aaa;font-size:13px;padding:20px;">جاري جلب الموديلات المتاحة...</div>
+                </div>
+                <p class="section-title">🌐 اللغة</p>
+                <select id="setup-language">
+                    <option value="ar">🇸🇦 العربية</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="ja">🇯🇵 日本語</option>
+                </select>
+                <p class="section-title" id="voice-section-title">🔊 الصوت</p>
+                <div id="voice-list"><div style="color:#aaa;font-size:13px;">جاري تحميل الأصوات...</div></div>
+                <p class="section-title">🧝 الأفاتار</p>
+                <select id="setup-avatar">
+                    <option value="kei">Kei (2D)</option>
+                    <option value="epsilon">Epsilon (2D)</option>
+                    <option value="frieren">Frieren (2D)</option>
+                    <option value="waifu3d">Waifu (3D)</option>
+                </select>
+                <p class="section-title">🌅 الخلفية</p>
+                <div class="bg-options">
+                    <div class="bg-option selected" data-bg="bg-space">
+                        <div class="bg-preview" style="background: radial-gradient(#1a0533, #060420);"></div>
+                        <div class="bg-label">فضاء</div>
+                    </div>
+                    <div class="bg-option" data-bg="bg-sakura">
+                        <div class="bg-preview" style="background: linear-gradient(#ffd6e8, #c8e6c9);"></div>
+                        <div class="bg-label">حديقة</div>
+                    </div>
+                    <div class="bg-option" data-bg="bg-room">
+                        <div class="bg-preview" style="background: linear-gradient(#1a1a2e, #0f3460);"></div>
+                        <div class="bg-label">غرفة</div>
+                    </div>
+                </div>
+                <button id="start-btn">🌸 تشغيل أليشيا</button>
+            </div>
         </div>
     </div>
 
-    <div id="settings-modal" class="hidden">
+    <!-- ── Settings Modal ── -->
+    <div id="settings-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <h2>تخصيص</h2>
-            <p>اللغة:</p>
-            <select id="settings-language-select">
-                <option value="ar">العربية</option>
-                <option value="en">English</option>
-                <option value="ja">日本語</option>
+            <h2>⚙️ الإعدادات</h2>
+
+            <p class="section-title">🤖 الموديل</p>
+            <select id="s-model">
+                <option value="">-- اختر الموديل --</option>
             </select>
-            <p>الأفاتار:</p>
-            <select id="settings-model-select">
+
+            <p class="section-title">🌐 اللغة</p>
+            <select id="s-language">
+                <option value="ar">🇸🇦 العربية</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="ja">🇯🇵 日本語</option>
+            </select>
+
+            <p class="section-title" id="s-voice-title">🔊 الصوت</p>
+            <div id="s-voice-list"></div>
+
+            <p class="section-title">🧝 الأفاتار</p>
+            <select id="s-avatar">
                 <option value="kei">Kei (2D)</option>
                 <option value="epsilon">Epsilon (2D)</option>
                 <option value="frieren">Frieren (2D)</option>
                 <option value="waifu3d">Waifu (3D)</option>
             </select>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button id="settings-save-btn">حفظ</button>
-                <button id="settings-close-btn" style="background: #444;">إغلاق</button>
+
+            <p class="section-title">🌅 الخلفية</p>
+            <div class="bg-options" id="s-bg-options">
+                <div class="bg-option" data-bg="bg-space">
+                    <div class="bg-preview" style="background: radial-gradient(#1a0533, #060420);"></div>
+                    <div class="bg-label">فضاء</div>
+                </div>
+                <div class="bg-option" data-bg="bg-sakura">
+                    <div class="bg-preview" style="background: linear-gradient(#ffd6e8, #c8e6c9);"></div>
+                    <div class="bg-label">حديقة</div>
+                </div>
+                <div class="bg-option" data-bg="bg-room">
+                    <div class="bg-preview" style="background: linear-gradient(#1a1a2e, #0f3460);"></div>
+                    <div class="bg-label">غرفة</div>
+                </div>
             </div>
+
+            <button id="s-save-btn">💾 حفظ</button>
+            <button id="s-close-btn" class="btn-secondary">إغلاق</button>
         </div>
     </div>
 
@@ -277,7 +477,6 @@
     <div id="status-bar">جاهز</div>
 
     <div id="top-controls">
-        <button class="glass-btn" id="language-btn" title="اللغة">🌐</button>
         <button class="glass-btn" id="settings-btn" title="الإعدادات">⚙️</button>
     </div>
 
@@ -291,7 +490,7 @@
     <div id="loading-overlay">
         <div class="spinner"></div>
         <div id="loading-text">جاري استدعاء أليشيا...</div>
-        <div id="loading-error"></div>
+        <div id="loading-error" style="color:#ff6b9d;margin-top:10px;"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
@@ -313,40 +512,25 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     (function() {
-        const CryptoUtils = {
-            encode: (str) => btoa(unescape(encodeURIComponent(str))),
-            decode: (str) => decodeURIComponent(escape(atob(str)))
-        };
 
-        const canvasContainer = document.getElementById('canvas-container');
-        const textInput = document.getElementById('text-input');
-        const sendBtn = document.getElementById('send-btn');
-        const stopBtn = document.getElementById('stop-btn');
-        const micBtn = document.getElementById('mic-btn');
-        const statusText = document.getElementById('status-bar');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const loadingText = document.getElementById('loading-text');
-        const loadingError = document.getElementById('loading-error');
-        const apiModal = document.getElementById('api-modal');
-        const hfKeyInput = document.getElementById('hf-api-key');
-        const modelSelect = document.getElementById('ai-model-select');
-        const languageSelect = document.getElementById('language-select');
-        const avatarSelect = document.getElementById('model-select');
-        const saveSettingsBtn = document.getElementById('save-settings-btn');
-        const apiError = document.getElementById('api-error');
-        const settingsModal = document.getElementById('settings-modal');
-        const settingsBtn = document.getElementById('settings-btn');
-        const languageBtn = document.getElementById('language-btn');
-        const settingsCloseBtn = document.getElementById('settings-close-btn');
-        const settingsSaveBtn = document.getElementById('settings-save-btn');
-        const settingsLanguageSelect = document.getElementById('settings-language-select');
-        const settingsModelSelect = document.getElementById('settings-model-select');
+        // ── KiloClaw Backend ──────────────────────────────────────
+        const KILOCLAW_BACKEND = 'https://fish-sleep-cooling-lectures.trycloudflare.com';
+
+        // ── State ─────────────────────────────────────────────────
+        let API_KEY = localStorage.getItem('ALISHA_API_KEY') || '';
+        let API_PROVIDER = localStorage.getItem('ALISHA_PROVIDER') || 'groq';
+        let SELECTED_MODEL = localStorage.getItem('ALISHA_MODEL') || 'llama-3.3-70b-versatile';
+        let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
+        let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
+        let CURRENT_BG = localStorage.getItem('ALISHA_BG') || 'bg-space';
+        let SELECTED_VOICE_URI = localStorage.getItem('ALISHA_VOICE') || '';
+        let availableVoices = [];
+        let persistentMemory = null;
 
         let pixiApp, live2dModel;
         let threeScene, threeCamera, threeRenderer, threeClock, currentVrm;
         let is3D = false, isSpeaking = false;
         let lipSyncAnimationId = null, abortController = null;
-        let persistentMemory = null;
 
         const MODEL_PATHS = {
             kei: './assets/models/2d/kei_vowels_pro/kei_vowels_pro.model3.json',
@@ -361,35 +545,265 @@
             ja: { name: '日本語', lang: 'ja-JP' }
         };
 
-        // نظام توجيه صارم جداً لمنع تداخل اللغات
         const SYSTEM_PROMPTS = {
-            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. [أمر قطعي]: يجب أن تكون جميع ردودك باللغة العربية فقط وبشكل حصري. يمنع منعاً باتاً استخدام أي لغة أخرى (مثل الصينية أو الإنجليزية) حتى لو تحدث المستخدم بلغة مختلفة. كوني ودودة ومختصرة.",
-            en: "You are 'Alisha', a playful anime girl. [STRICT ORDER]: You MUST respond exclusively in English. Do not use any other language under any circumstances, even if the user speaks a different language. Be friendly and brief.",
-            ja: "あなたは「アリシャ」です。[絶対命令]: ユーザーが何語で話しかけても、必ず**日本語のみ**で返答してください。他の言語（中国語や英語など）を混ぜることは絶対に禁止されています。短く、可愛らしく話してください。"
+            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. يجب أن تكون جميع ردودك باللغة العربية فقط. كوني ودودة ومختصرة.",
+            en: "You are 'Alisha', a playful anime girl. MUST respond exclusively in English. Be friendly and brief.",
+            ja: "あなたは「アリシャ」です。必ず日本語のみで返答してください。短く、可愛らしく話してください。"
         };
 
-        // ── KiloClaw Backend ──────────────────────────────────────────
-        const KILOCLAW_BACKEND = 'https://fish-sleep-cooling-lectures.trycloudflare.com';
-        let BACKEND_READY = false;
+        // ── DOM refs ──────────────────────────────────────────────
+        const setupModal = document.getElementById('setup-modal');
+        const settingsModal = document.getElementById('settings-modal');
+        const step1 = document.getElementById('step-1');
+        const step2 = document.getElementById('step-2');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const verifyKeyBtn = document.getElementById('verify-key-btn');
+        const keyError = document.getElementById('key-error');
+        const modelListContainer = document.getElementById('model-list-container');
+        const setupLanguage = document.getElementById('setup-language');
+        const setupAvatar = document.getElementById('setup-avatar');
+        const startBtn = document.getElementById('start-btn');
+        const bgLayer = document.getElementById('bg-layer');
+        const canvasContainer = document.getElementById('canvas-container');
+        const textInput = document.getElementById('text-input');
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const micBtn = document.getElementById('mic-btn');
+        const statusText = document.getElementById('status-bar');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingError = document.getElementById('loading-error');
+        const settingsBtn = document.getElementById('settings-btn');
+        const sSaveBtn = document.getElementById('s-save-btn');
+        const sCloseBtn = document.getElementById('s-close-btn');
+        const sModel = document.getElementById('s-model');
+        const sLanguage = document.getElementById('s-language');
+        const sAvatar = document.getElementById('s-avatar');
+        const sVoiceList = document.getElementById('s-voice-list');
 
-        // فحص الـ Backend عند التشغيل
-        fetch(KILOCLAW_BACKEND + '/status')
-          .then(r => r.json())
-          .then(d => { if (d.status === 'online') { BACKEND_READY = true; console.log('✅ KiloClaw Backend connected'); } })
-          .catch(() => { console.warn('⚠️ KiloClaw Backend offline'); });
-
-        let SELECTED_MODEL = 'llama-3.3-70b-versatile';
-        let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
-        let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
-        let CURRENT_MODEL_PATH = MODEL_PATHS[CURRENT_AVATAR];
-
-        async function loadMemory() {
-            try {
-                const response = await fetch('./memory.json');
-                if (response.ok) persistentMemory = await response.json();
-            } catch (e) {}
+        // ── Background ────────────────────────────────────────────
+        function applyBackground(bg) {
+            CURRENT_BG = bg;
+            bgLayer.className = 'bg-' + bg.replace('bg-', '');
+            bgLayer.className = bg;
+            localStorage.setItem('ALISHA_BG', bg);
+            // update selectors
+            document.querySelectorAll('.bg-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.bg === bg);
+            });
         }
 
+        document.querySelectorAll('.bg-option').forEach(el => {
+            el.addEventListener('click', () => applyBackground(el.dataset.bg));
+        });
+
+        // ── Voice helpers ─────────────────────────────────────────
+        function loadVoices() {
+            availableVoices = window.speechSynthesis.getVoices();
+        }
+
+        function getVoicesForLang(lang) {
+            const code = LANGUAGE_CONFIG[lang]?.lang || lang;
+            const base = code.split('-')[0];
+            return availableVoices.filter(v =>
+                v.lang.startsWith(code) || v.lang.startsWith(base)
+            );
+        }
+
+        function renderVoiceList(containerId, lang, selectedUri) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const voices = getVoicesForLang(lang);
+            if (voices.length === 0) {
+                container.innerHTML = '<div style="color:#888;font-size:12px;padding:8px;">لا توجد أصوات لهذه اللغة في المتصفح</div>';
+                return;
+            }
+            container.innerHTML = voices.map(v =>
+                `<div class="voice-item ${v.voiceURI === selectedUri ? 'selected' : ''}"
+                    data-uri="${v.voiceURI}" data-name="${v.name}">
+                    ${v.name} <span style="opacity:0.5;font-size:11px;">${v.lang}</span>
+                </div>`
+            ).join('');
+            container.querySelectorAll('.voice-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    container.querySelectorAll('.voice-item').forEach(x => x.classList.remove('selected'));
+                    el.classList.add('selected');
+                    SELECTED_VOICE_URI = el.dataset.uri;
+                    localStorage.setItem('ALISHA_VOICE', SELECTED_VOICE_URI);
+                });
+            });
+        }
+
+        // ── API Key verification & model fetching ─────────────────
+        function detectProvider(key) {
+            if (key.startsWith('gsk_')) return 'groq';
+            if (key.startsWith('hf_')) return 'huggingface';
+            if (key.startsWith('sk-or-')) return 'openrouter';
+            return 'groq';
+        }
+
+        async function fetchModels(key) {
+            const provider = detectProvider(key);
+            const endpoints = {
+                groq: { url: 'https://api.groq.com/openai/v1/models', header: `Bearer ${key}` },
+                openrouter: { url: 'https://openrouter.ai/api/v1/models', header: `Bearer ${key}` },
+                huggingface: { url: null }
+            };
+
+            if (provider === 'huggingface') {
+                // HF لا تدعم قائمة موديلات — نعرض موديلات ثابتة
+                return [
+                    { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B', tag: 'قوي' },
+                    { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen 2.5 7B', tag: 'سريع' },
+                    { id: 'meta-llama/Llama-3.2-3B-Instruct', name: 'Llama 3.2 3B', tag: 'خفيف' }
+                ];
+            }
+
+            try {
+                const ep = endpoints[provider];
+                const res = await fetch(ep.url, { headers: { 'Authorization': ep.header } });
+                if (!res.ok) throw new Error('invalid key');
+                const data = await res.json();
+                const models = data.data || data.models || [];
+                return models
+                    .filter(m => {
+                        const id = (m.id || '').toLowerCase();
+                        // نظهر فقط موديلات المحادثة
+                        return id.includes('instruct') || id.includes('chat') || id.includes('llama') || id.includes('gemma') || id.includes('mixtral') || id.includes('qwen');
+                    })
+                    .slice(0, 20)
+                    .map(m => ({ id: m.id, name: m.id.split('/').pop().split(':')[0], tag: provider }));
+            } catch (e) {
+                throw new Error('مفتاح غير صالح أو تعذّر الاتصال');
+            }
+        }
+
+        function renderModelList(models) {
+            if (!models.length) {
+                modelListContainer.innerHTML = '<div style="color:#aaa;font-size:13px;padding:10px;">لا توجد موديلات متاحة</div>';
+                return;
+            }
+            modelListContainer.innerHTML = models.map(m =>
+                `<div class="model-item ${m.id === SELECTED_MODEL ? 'selected' : ''}" data-id="${m.id}">
+                    <span>${m.name}</span>
+                    <span class="model-tag">${m.tag}</span>
+                </div>`
+            ).join('');
+            modelListContainer.querySelectorAll('.model-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    modelListContainer.querySelectorAll('.model-item').forEach(x => x.classList.remove('selected'));
+                    el.classList.add('selected');
+                    SELECTED_MODEL = el.dataset.id;
+                });
+            });
+            // also fill settings modal model select
+            sModel.innerHTML = models.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+            sModel.value = SELECTED_MODEL;
+        }
+
+        verifyKeyBtn.addEventListener('click', async () => {
+            const key = apiKeyInput.value.trim();
+            if (!key) { keyError.textContent = 'أدخل المفتاح أولاً'; keyError.style.display = 'block'; return; }
+            verifyKeyBtn.textContent = '⏳ جاري التحقق...';
+            verifyKeyBtn.disabled = true;
+            keyError.style.display = 'none';
+            try {
+                const models = await fetchModels(key);
+                API_KEY = key;
+                API_PROVIDER = detectProvider(key);
+                localStorage.setItem('ALISHA_API_KEY', key);
+                localStorage.setItem('ALISHA_PROVIDER', API_PROVIDER);
+                // go to step 2
+                step1.classList.add('hidden');
+                step2.classList.remove('hidden');
+                document.getElementById('dot-1').classList.remove('active');
+                document.getElementById('dot-1').classList.add('done');
+                document.getElementById('dot-2').classList.add('active');
+                renderModelList(models);
+                // load voices
+                setTimeout(() => {
+                    loadVoices();
+                    renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+                }, 500);
+            } catch (e) {
+                keyError.textContent = e.message;
+                keyError.style.display = 'block';
+            }
+            verifyKeyBtn.textContent = 'التحقق من المفتاح →';
+            verifyKeyBtn.disabled = false;
+        });
+
+        // Update voice list when language changes in setup
+        setupLanguage.addEventListener('change', () => {
+            CURRENT_LANGUAGE = setupLanguage.value;
+            renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+        });
+
+        // bg selector in setup
+        document.querySelectorAll('#setup-modal .bg-option').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('#setup-modal .bg-option').forEach(x => x.classList.remove('selected'));
+                el.classList.add('selected');
+                applyBackground(el.dataset.bg);
+            });
+        });
+
+        startBtn.addEventListener('click', () => {
+            CURRENT_LANGUAGE = setupLanguage.value;
+            CURRENT_AVATAR = setupAvatar.value;
+            localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
+            localStorage.setItem('ALISHA_AVATAR', CURRENT_AVATAR);
+            localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
+            setupModal.classList.add('hidden');
+            initAvatar();
+        });
+
+        // ── Settings Modal ────────────────────────────────────────
+        settingsBtn.addEventListener('click', () => {
+            sLanguage.value = CURRENT_LANGUAGE;
+            sAvatar.value = CURRENT_AVATAR;
+            sModel.value = SELECTED_MODEL;
+            renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+            document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.bg === CURRENT_BG);
+            });
+            settingsModal.classList.remove('hidden');
+        });
+
+        sLanguage.addEventListener('change', () => {
+            renderVoiceList('s-voice-list', sLanguage.value, SELECTED_VOICE_URI);
+        });
+
+        document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('#s-bg-options .bg-option').forEach(x => x.classList.remove('selected'));
+                el.classList.add('selected');
+                applyBackground(el.dataset.bg);
+            });
+        });
+
+        sSaveBtn.addEventListener('click', () => {
+            const newLang = sLanguage.value;
+            const newAvatar = sAvatar.value;
+            const newModel = sModel.value;
+            if (newModel) SELECTED_MODEL = newModel;
+            localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
+            if (newLang !== CURRENT_LANGUAGE) {
+                CURRENT_LANGUAGE = newLang;
+                localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
+            }
+            if (newAvatar !== CURRENT_AVATAR) {
+                CURRENT_AVATAR = newAvatar;
+                localStorage.setItem('ALISHA_AVATAR', CURRENT_AVATAR);
+                settingsModal.classList.add('hidden');
+                initAvatar();
+                return;
+            }
+            settingsModal.classList.add('hidden');
+        });
+
+        sCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+        // ── Avatar / 3D ───────────────────────────────────────────
         function clearCanvases() {
             if (pixiApp) { pixiApp.destroy(true, { children: true, texture: true, baseTexture: true }); pixiApp = null; }
             if (threeRenderer) { threeRenderer.dispose(); threeRenderer.domElement.remove(); threeRenderer = null; threeScene = null; }
@@ -420,15 +834,17 @@
         async function initAvatar() {
             clearCanvases();
             loadingOverlay.classList.remove('hidden');
-            if (CURRENT_MODEL_PATH.endsWith('.vrm')) { is3D = true; await init3D(); }
-            else { is3D = false; await initLive2D(); }
+            loadingError.textContent = '';
+            const path = MODEL_PATHS[CURRENT_AVATAR];
+            if (path.endsWith('.vrm')) { is3D = true; await init3D(path); }
+            else { is3D = false; await initLive2D(path); }
         }
 
-        async function initLive2D() {
+        async function initLive2D(path) {
             try {
                 pixiApp = new PIXI.Application({ view: document.createElement('canvas'), autoStart: true, backgroundAlpha: 0, resizeTo: window });
                 canvasContainer.appendChild(pixiApp.view);
-                live2dModel = await PIXI.live2d.Live2DModel.from(CURRENT_MODEL_PATH);
+                live2dModel = await PIXI.live2d.Live2DModel.from(path);
                 pixiApp.stage.addChild(live2dModel);
                 updateLive2DScale();
                 window.addEventListener('resize', handleResize);
@@ -437,7 +853,7 @@
             } catch (e) { showError(e.message); }
         }
 
-        async function init3D() {
+        async function init3D(path) {
             try {
                 threeScene = new THREE.Scene();
                 threeClock = new THREE.Clock();
@@ -448,28 +864,23 @@
                 threeRenderer.setPixelRatio(window.devicePixelRatio);
                 threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
                 canvasContainer.appendChild(threeRenderer.domElement);
-
                 const controls = new OrbitControls(threeCamera, threeRenderer.domElement);
                 controls.target.set(0, 1.2, 0);
                 controls.update();
-
                 threeScene.add(new THREE.AmbientLight(0xffffff, 0.5));
                 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
                 dirLight.position.set(1, 1, 1).normalize();
                 threeScene.add(dirLight);
-
                 new RGBELoader().load('./assets/backgrounds/background.hdr', (texture) => {
                     texture.mapping = THREE.EquirectangularReflectionMapping;
                     threeScene.environment = texture;
                 }, undefined, () => {});
-
                 const loader = new GLTFLoader();
                 loader.register(parser => new VRMLoaderPlugin(parser));
-                const gltf = await loader.loadAsync(CURRENT_MODEL_PATH);
+                const gltf = await loader.loadAsync(path);
                 currentVrm = gltf.userData.vrm;
                 threeScene.add(currentVrm.scene);
                 VRMUtils.rotateVRM0(currentVrm);
-
                 const animate = () => {
                     if (!threeRenderer) return;
                     requestAnimationFrame(animate);
@@ -492,18 +903,18 @@
         function showError(msg) {
             loadingOverlay.classList.remove('hidden');
             loadingError.textContent = msg;
-            loadingError.style.display = 'block';
         }
 
+        // ── Lip Sync ──────────────────────────────────────────────
         function startLipSync() {
             isSpeaking = true;
             let startTime = performance.now();
             function animateMouth() {
                 if (!isSpeaking) return;
                 const elapsed = performance.now() - startTime;
-                const mouthOpenValue = 0.3 + Math.sin(elapsed * 0.015) * 0.2;
-                if (is3D && currentVrm) currentVrm.expressionManager.setValue('aa', mouthOpenValue);
-                else if (live2dModel && live2dModel.internalModel?.coreModel) live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpenValue);
+                const val = 0.3 + Math.sin(elapsed * 0.015) * 0.2;
+                if (is3D && currentVrm) currentVrm.expressionManager.setValue('aa', val);
+                else if (live2dModel?.internalModel?.coreModel) live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', val);
                 lipSyncAnimationId = requestAnimationFrame(animateMouth);
             }
             lipSyncAnimationId = requestAnimationFrame(animateMouth);
@@ -513,46 +924,74 @@
             isSpeaking = false;
             if (lipSyncAnimationId) cancelAnimationFrame(lipSyncAnimationId);
             if (is3D && currentVrm) currentVrm.expressionManager.setValue('aa', 0);
-            else if (live2dModel && live2dModel.internalModel?.coreModel) live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
+            else if (live2dModel?.internalModel?.coreModel) live2dModel.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
         }
 
+        // ── AI Request ────────────────────────────────────────────
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             abortController = new AbortController();
-
             try {
-                // ── إرسال للـ KiloClaw Backend ──────────────────────────
-                const response = await fetch(KILOCLAW_BACKEND + '/chat', {
+                // أولاً: جرّب Backend KiloClaw
+                const res = await fetch(KILOCLAW_BACKEND + '/chat', {
                     method: 'POST',
                     signal: abortController.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: userText,
-                        language: CURRENT_LANGUAGE,
-                        memory: persistentMemory
-                    })
+                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, memory: persistentMemory })
                 });
-                const data = await response.json();
-                return data.reply || "لم أفهم الطلب.";
+                const data = await res.json();
+                return data.reply || 'لم أفهم الطلب.';
             } catch (e) {
                 if (e.name === 'AbortError') return null;
-                return "تعذّر الاتصال بالخادم. تأكد من تشغيل KiloClaw Backend.";
+                // إذا فشل Backend، استخدم API المستخدم مباشرة
+                if (!API_KEY) return 'تعذّر الاتصال بالخادم.';
+                return await callDirectAPI(userText);
             }
         }
 
+        async function callDirectAPI(userText) {
+            const provider = API_PROVIDER;
+            const endpoints = {
+                groq: 'https://api.groq.com/openai/v1/chat/completions',
+                openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+                huggingface: 'https://router.huggingface.co/v1/chat/completions'
+            };
+            try {
+                const res = await fetch(endpoints[provider] || endpoints.groq, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: SELECTED_MODEL,
+                        messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
+                        max_tokens: 300, temperature: 0.7
+                    })
+                });
+                const data = await res.json();
+                return data.choices?.[0]?.message?.content || 'لم أفهم.';
+            } catch (e) { return 'تعذّر الاتصال.'; }
+        }
+
+        // ── Speech ────────────────────────────────────────────────
         function speakText(text) {
             return new Promise((resolve) => {
                 if (!text) return resolve();
                 updateStatus('Speaking...');
                 const utterance = new SpeechSynthesisUtterance(text);
+                // استخدم الصوت المختار إن وجد
+                if (SELECTED_VOICE_URI) {
+                    const voice = availableVoices.find(v => v.voiceURI === SELECTED_VOICE_URI);
+                    if (voice) utterance.voice = voice;
+                }
                 utterance.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
                 utterance.onstart = () => startLipSync();
                 utterance.onend = () => { stopLipSync(); updateStatus('Ready'); resolve(); };
+                utterance.onerror = () => { stopLipSync(); updateStatus('Ready'); resolve(); };
                 window.speechSynthesis.cancel();
                 window.speechSynthesis.speak(utterance);
             });
         }
 
+        // ── Input handling ────────────────────────────────────────
         async function processUserInput(text) {
             if (!text.trim()) return;
             sendBtn.disabled = true; micBtn.disabled = true;
@@ -575,21 +1014,6 @@
 
         function updateStatus(text) { statusText.textContent = text; }
 
-        function changeLanguage(lang) {
-            CURRENT_LANGUAGE = lang;
-            localStorage.setItem('ALISHA_LANGUAGE', lang);
-            updateStatus(LANGUAGE_CONFIG[lang].name);
-            settingsLanguageSelect.value = lang;
-        }
-
-        function changeAvatar(avatarName) {
-            CURRENT_AVATAR = avatarName;
-            CURRENT_MODEL_PATH = MODEL_PATHS[avatarName];
-            localStorage.setItem('ALISHA_AVATAR', avatarName);
-            settingsModelSelect.value = avatarName;
-            initAvatar();
-        }
-
         textInput.addEventListener('focus', () => setTimeout(handleResize, 300));
         textInput.addEventListener('blur', () => setTimeout(handleResize, 300));
         sendBtn.addEventListener('click', () => {
@@ -604,60 +1028,46 @@
         });
         stopBtn.addEventListener('click', stopAll);
 
+        // ── Microphone ────────────────────────────────────────────
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = 'ar-SA'; 
+            recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
             recognition.onstart = () => micBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micBtn.classList.remove('recording');
             recognition.onerror = () => micBtn.classList.remove('recording');
         }
-
         micBtn.addEventListener('click', () => {
-            if (recognition) recognition.start();
-            else alert('Browser not supported');
+            if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
+            else alert('المتصفح لا يدعم التعرف على الصوت');
         });
 
-        settingsBtn.addEventListener('click', () => {
-            settingsLanguageSelect.value = CURRENT_LANGUAGE;
-            settingsModelSelect.value = CURRENT_AVATAR;
-            settingsModal.classList.remove('hidden');
-        });
+        // ── Memory ────────────────────────────────────────────────
+        async function loadMemory() {
+            try {
+                const response = await fetch('./memory.json');
+                if (response.ok) persistentMemory = await response.json();
+            } catch (e) {}
+        }
 
-        languageBtn.addEventListener('click', () => {
-            const langs = ['ar', 'en', 'ja'];
-            const next = (langs.indexOf(CURRENT_LANGUAGE) + 1) % langs.length;
-            changeLanguage(langs[next]);
-        });
-
-        settingsCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
-        settingsSaveBtn.addEventListener('click', () => {
-            changeLanguage(settingsLanguageSelect.value);
-            changeAvatar(settingsModelSelect.value);
-            settingsModal.classList.add('hidden');
-        });
-
-        saveSettingsBtn.addEventListener('click', () => {
-            SELECTED_MODEL = 'llama-3.3-70b-versatile';
-            changeLanguage(languageSelect.value);
-            changeAvatar(avatarSelect.value);
-            apiModal.classList.add('hidden');
-        });
-
+        // ── Init ──────────────────────────────────────────────────
         (async function start() {
             await loadMemory();
-            CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
-            CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
-            CURRENT_MODEL_PATH = MODEL_PATHS[CURRENT_AVATAR];
-            SELECTED_MODEL = localStorage.getItem('ALISHA_AI_MODEL') || 'Qwen/Qwen2.5-7B-Instruct';
             window.speechSynthesis.getVoices();
-            // KiloClaw Edition: لا حاجة لمفتاح API
-            apiModal.classList.add('hidden'); initAvatar();
+            setTimeout(loadVoices, 1000);
+            applyBackground(CURRENT_BG);
+
+            // إذا كان المفتاح محفوظاً، ابدأ مباشرة
+            if (API_KEY) {
+                setupModal.classList.add('hidden');
+                initAvatar();
+            }
+            // وإلا اعرض نافذة الإعداد
         })();
+
     })();
     </script>
 </body>
 </html>
-```
