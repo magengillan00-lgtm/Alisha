@@ -1,0 +1,24 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "chino.moc3",
+		"Textures": [
+			"chino.4096/texture_00.png",
+			"chino.4096/texture_01.png"
+		],
+		"Physics": "chino.physics3.json",
+		"DisplayInfo": "chino.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}
