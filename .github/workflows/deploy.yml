@@ -1,0 +1,45 @@
+name: Deploy Alisha with Secrets
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject API Keys
+        run: |
+          # استبدل الـ placeholders بالمفاتيح الحقيقية
+          sed -i "s|__GROQ_KEY__|${{ secrets.G }}|g" index.html
+          sed -i "s|__HF_KEY__|${{ secrets.HU }}|g" index.html
+          sed -i "s|__GEMINI_KEY__|${{ secrets.GIMINI }}|g" index.html
+          echo "✅ Keys injected"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

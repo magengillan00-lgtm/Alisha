@@ -934,24 +934,43 @@
         }
 
         // ── AI Request ────────────────────────────────────────────
+        // Groq Key injected by GitHub Actions
+        const _GK = '__GROQ_KEY__';
+
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             abortController = new AbortController();
+
+            // جرّب Backend أولاً
             try {
-                const controller = new AbortController();
-                const tout = setTimeout(() => controller.abort(), 10000);
+                const ctrl = new AbortController();
+                const tout = setTimeout(() => ctrl.abort(), 6000);
                 const res = await fetch(KILOCLAW_BACKEND + '/chat', {
-                    method: 'POST',
-                    signal: controller.signal,
+                    method: 'POST', signal: ctrl.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, memory: persistentMemory, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
+                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
                 });
                 clearTimeout(tout);
                 const data = await res.json();
-                return data.reply || 'لم أفهم الطلب.';
+                if (data.reply) return data.reply;
+            } catch (e) { /* Backend غير متاح */ }
+
+            // Groq مباشرة كبديل
+            try {
+                const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
+                        messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
+                        max_tokens: 300, temperature: 0.7
+                    })
+                });
+                const data = await res.json();
+                return data.choices?.[0]?.message?.content || 'لم أفهم الطلب.';
             } catch (e) {
                 if (e.name === 'AbortError') return null;
-                return 'تعذّر الاتصال بالخادم.';
+                return 'تعذّر الاتصال.';
             }
         }
 
