@@ -877,7 +877,7 @@
                 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
                 dirLight.position.set(1, 1, 1).normalize();
                 threeScene.add(dirLight);
-                new RGBELoader().load('./assets/backgrounds/background.hdr', (texture) => {
+                new RGBELoader().load('./assets/models/3d/backgrounds/background.hdr', (texture) => {
                     texture.mapping = THREE.EquirectangularReflectionMapping;
                     threeScene.environment = texture;
                 }, undefined, () => {});
