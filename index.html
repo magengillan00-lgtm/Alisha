@@ -517,6 +517,7 @@
 
         // ── KiloClaw Backend ──────────────────────────────────────
         const KILOCLAW_BACKEND = 'https://fish-sleep-cooling-lectures.trycloudflare.com';
+        const HF_SPACE_API = 'https://zeedtoven-my-ai-agent.hf.space/api/predict';
 
         // ── State ─────────────────────────────────────────────────
         let API_KEY = localStorage.getItem('ALISHA_API_KEY') || '';
@@ -940,6 +941,17 @@
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             abortController = new AbortController();
+
+            // جرّب HF Space أولاً (أكثر استقراراً)
+            try {
+                const hfRes = await fetch(HF_SPACE_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: [userText, CURRENT_LANGUAGE] })
+                });
+                const hfData = await hfRes.json();
+                if (hfData.data?.[0]) return hfData.data[0];
+            } catch (e) { /* HF Space غير متاح */ }
 
             // جرّب Backend أولاً
             try {
