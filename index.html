@@ -229,14 +229,9 @@
 
     <div id="api-modal">
         <div class="modal-content">
-            <h2>إعدادات Alisha</h2>
-            <p>مفتاح Hugging Face (hf_...):</p>
-            <input type="password" id="hf-api-key" placeholder="أدخل المفتاح هنا" />
-            <p>الموديل الذكي:</p>
-            <select id="ai-model-select">
-                <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 (الأفضل والأسرح)</option>
-                <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2</option>
-            </select>
+            <h2>⚡ KiloClaw Edition</h2>
+            <p style="color:#aaffaa;">✅ أليشيا مدعومة بـ KiloClaw AI</p>
+            <p style="color:#ccc; font-size:13px;">لا تحتاج مفتاح API — الذكاء الاصطناعي يعمل من الخادم مباشرة.</p>
             <p>اللغة الافتراضية:</p>
             <select id="language-select">
                 <option value="ar">العربية</option>
@@ -373,13 +368,20 @@
             ja: "あなたは「アリシャ」です。[絶対命令]: ユーザーが何語で話しかけても、必ず**日本語のみ**で返答してください。他の言語（中国語や英語など）を混ぜることは絶対に禁止されています。短く、可愛らしく話してください。"
         };
 
-        let HF_API_KEY = '', SELECTED_MODEL = 'Qwen/Qwen2.5-7B-Instruct';
+        // ── KiloClaw Backend ──────────────────────────────────────────
+        const KILOCLAW_BACKEND = 'http://152.236.1.133:3000';
+        let BACKEND_READY = false;
+
+        // فحص الـ Backend عند التشغيل
+        fetch(KILOCLAW_BACKEND + '/status')
+          .then(r => r.json())
+          .then(d => { if (d.status === 'online') { BACKEND_READY = true; console.log('✅ KiloClaw Backend connected'); } })
+          .catch(() => { console.warn('⚠️ KiloClaw Backend offline'); });
+
+        let SELECTED_MODEL = 'llama-3.3-70b-versatile';
         let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
         let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
         let CURRENT_MODEL_PATH = MODEL_PATHS[CURRENT_AVATAR];
-
-        const encryptedKey = localStorage.getItem('ALISHA_HF_KEY_ENC');
-        if (encryptedKey) { try { HF_API_KEY = CryptoUtils.decode(encryptedKey); } catch (e) {} }
 
         async function loadMemory() {
             try {
@@ -515,29 +517,26 @@
         }
 
         async function getAIResponse(userText) {
-            if (!HF_API_KEY) { apiModal.classList.remove('hidden'); return "API key missing"; }
             updateStatus('Thinking...');
-            
             abortController = new AbortController();
-            let systemPrompt = SYSTEM_PROMPTS[CURRENT_LANGUAGE];
-            if (persistentMemory) systemPrompt += "\n\nMemory:\n" + JSON.stringify(persistentMemory);
 
             try {
-                const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
+                // ── إرسال للـ KiloClaw Backend ──────────────────────────
+                const response = await fetch(KILOCLAW_BACKEND + '/chat', {
                     method: 'POST',
                     signal: abortController.signal,
-                    headers: { 'Authorization': `Bearer ${HF_API_KEY}`, 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: SELECTED_MODEL,
-                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-                        max_tokens: 200, temperature: 0.7
+                        message: userText,
+                        language: CURRENT_LANGUAGE,
+                        memory: persistentMemory
                     })
                 });
                 const data = await response.json();
-                return data.choices?.[0]?.message?.content || "I don't understand.";
+                return data.reply || "لم أفهم الطلب.";
             } catch (e) {
                 if (e.name === 'AbortError') return null;
-                return "Connection error.";
+                return "تعذّر الاتصال بالخادم. تأكد من تشغيل KiloClaw Backend.";
             }
         }
 
@@ -641,12 +640,7 @@
         });
 
         saveSettingsBtn.addEventListener('click', () => {
-            const key = hfKeyInput.value.trim();
-            if (!key.startsWith('hf_')) { apiError.textContent = 'Invalid Key'; apiError.style.display = 'block'; return; }
-            HF_API_KEY = key;
-            localStorage.setItem('ALISHA_HF_KEY_ENC', CryptoUtils.encode(key));
-            SELECTED_MODEL = modelSelect.value;
-            localStorage.setItem('ALISHA_AI_MODEL', SELECTED_MODEL);
+            SELECTED_MODEL = 'llama-3.3-70b-versatile';
             changeLanguage(languageSelect.value);
             changeAvatar(avatarSelect.value);
             apiModal.classList.add('hidden');
@@ -659,7 +653,8 @@
             CURRENT_MODEL_PATH = MODEL_PATHS[CURRENT_AVATAR];
             SELECTED_MODEL = localStorage.getItem('ALISHA_AI_MODEL') || 'Qwen/Qwen2.5-7B-Instruct';
             window.speechSynthesis.getVoices();
-            if (HF_API_KEY) { apiModal.classList.add('hidden'); initAvatar(); }
+            // KiloClaw Edition: لا حاجة لمفتاح API
+            apiModal.classList.add('hidden'); initAvatar();
         })();
     })();
     </script>
