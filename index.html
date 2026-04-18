@@ -476,7 +476,7 @@
     <div id="canvas-container"></div>
     <div id="status-bar">جاهز</div>
     <!-- ── Reply Bubble ── -->
-    <div id="reply-bubble" style="display:none;position:fixed;bottom:115px;left:50%;transform:translateX(-50%);max-width:88%;background:rgba(20,18,45,0.94);border:1px solid rgba(255,107,157,0.45);border-radius:20px;padding:14px 20px;color:white;font-size:14px;line-height:1.7;z-index:10;backdrop-filter:blur(14px);text-align:right;direction:rtl;box-shadow:0 4px 24px rgba(0,0,0,0.5);"></div>
+    <div id="reply-bubble" style="display:none;"></div>
 
     <div id="top-controls">
         <button class="glass-btn" id="settings-btn" title="الإعدادات">⚙️</button>
@@ -1001,30 +1001,22 @@
         const replyBubble = document.getElementById('reply-bubble');
         let replyTimer = null;
 
-        function showReply(text) {
-            replyBubble.textContent = text;
-            replyBubble.style.display = 'block';
-            clearTimeout(replyTimer);
-            replyTimer = setTimeout(() => { replyBubble.style.display = 'none'; }, 15000);
-        }
+        function showReply(text) { /* صوت فقط */ }
 
         async function processUserInput(text) {
             if (!text.trim()) return;
             sendBtn.disabled = true; micBtn.disabled = true;
             stopBtn.classList.add('visible');
-            replyBubble.style.display = 'none';
             try {
                 const aiResponse = await getAIResponse(text);
                 if (aiResponse) {
-                    showReply(aiResponse);
                     await speakText(aiResponse);
                 } else {
-                    showReply('تعذّر الحصول على رد.');
-                    updateStatus('Error');
+                    updateStatus('لا يوجد رد');
                 }
             } catch (e) {
-                showReply('خطأ: ' + e.message);
                 console.error(e);
+                updateStatus('خطأ');
             }
             sendBtn.disabled = false; micBtn.disabled = false;
             stopBtn.classList.remove('visible');
