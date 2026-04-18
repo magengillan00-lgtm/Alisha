@@ -355,6 +355,33 @@
         .bg-option .bg-preview { width: 100%; height: 100%; }
         .bg-option .bg-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 10px; text-align: center; padding: 3px; }
 
+        /* ── AI Provider Cards ── */
+        .provider-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        .provider-card {
+            flex: 1; min-width: 80px;
+            padding: 12px 8px;
+            border-radius: 14px;
+            border: 2px solid #333;
+            background: #1a1a3a;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.25s;
+            color: #ccc;
+            font-size: 12px;
+        }
+        .provider-card:hover { border-color: var(--primary-color); }
+        .provider-card.active {
+            border-color: var(--primary-color);
+            background: rgba(255,107,157,0.15);
+            color: white;
+        }
+        .provider-card .p-icon { font-size: 22px; display: block; margin-bottom: 5px; }
+        .provider-card .p-name { font-weight: 600; font-size: 11px; }
+        .provider-card .p-status {
+            font-size: 10px; margin-top: 3px; opacity: 0.7;
+        }
+        .provider-card.active .p-status { color: #88ff99; opacity: 1; }
+
         @media (max-width: 600px) {
             #text-input { width: 180px; padding: 12px; }
             .action-btn { width: 50px; height: 50px; }
@@ -425,6 +452,25 @@
     <div id="settings-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2>⚙️ الإعدادات</h2>
+
+            <p class="section-title">⚡ مزود الذكاء الاصطناعي</p>
+            <div class="provider-cards" id="provider-cards">
+                <div class="provider-card active" data-provider="groq">
+                    <span class="p-icon">🟢</span>
+                    <div class="p-name">Groq</div>
+                    <div class="p-status">Llama 3.3</div>
+                </div>
+                <div class="provider-card" data-provider="gemini">
+                    <span class="p-icon">🔵</span>
+                    <div class="p-name">Gemini</div>
+                    <div class="p-status">2.0 Flash</div>
+                </div>
+                <div class="provider-card" data-provider="kiloclaw">
+                    <span class="p-icon">🤖</span>
+                    <div class="p-name">KiloClaw</div>
+                    <div class="p-status">Backend</div>
+                </div>
+            </div>
 
             <p class="section-title">🤖 الموديل</p>
             <select id="s-model">
@@ -526,6 +572,7 @@
         let API_KEY = localStorage.getItem('ALISHA_API_KEY') || '';
         let API_PROVIDER = localStorage.getItem('ALISHA_PROVIDER') || 'groq';
         let SELECTED_MODEL = localStorage.getItem('ALISHA_MODEL') || 'llama-3.3-70b-versatile';
+        let AI_PROVIDER = localStorage.getItem('ALISHA_PROVIDER_CHOICE') || 'groq'; // groq | gemini | kiloclaw
         let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
         let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
         let CURRENT_BG = localStorage.getItem('ALISHA_BG') || 'bg-space';
@@ -768,10 +815,17 @@
         });
 
         // ── Settings Modal ────────────────────────────────────────
+        function syncProviderCards() {
+            document.querySelectorAll('.provider-card').forEach(c => {
+                c.classList.toggle('active', c.dataset.provider === AI_PROVIDER);
+            });
+        }
+
         settingsBtn.addEventListener('click', () => {
             sLanguage.value = CURRENT_LANGUAGE;
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
+            syncProviderCards();
             renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
                 el.classList.toggle('selected', el.dataset.bg === CURRENT_BG);
@@ -812,6 +866,18 @@
         });
 
         sCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+        // ── Provider Cards ─────────────────────────────────────
+        document.querySelectorAll('.provider-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                AI_PROVIDER = card.dataset.provider;
+                localStorage.setItem('ALISHA_PROVIDER_CHOICE', AI_PROVIDER);
+                updateStatus('مزود: ' + card.querySelector('.p-name').textContent);
+                setTimeout(() => updateStatus('Ready'), 2000);
+            });
+        });
 
         // ── Avatar / 3D ───────────────────────────────────────────
         function clearCanvases() {
@@ -963,55 +1029,67 @@
         }
 
         // ── AI Request ────────────────────────────────────────────
-        // Groq Key injected by GitHub Actions
         const _GK = '__GROQ_KEY__';
+
+        async function callGroq(userText) {
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
+                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
+                    max_tokens: 300, temperature: 0.7
+                })
+            });
+            const data = await res.json();
+            return data.choices?.[0]?.message?.content || null;
+        }
+
+        async function callGemini(userText) {
+            const hfRes = await fetch(HF_SPACE_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data: [userText, CURRENT_LANGUAGE] })
+            });
+            const hfData = await hfRes.json();
+            return hfData.data?.[0] || null;
+        }
+
+        async function callKiloClaw(userText) {
+            const ctrl = new AbortController();
+            const tout = setTimeout(() => ctrl.abort(), 8000);
+            const res = await fetch(KILOCLAW_BACKEND + '/chat', {
+                method: 'POST', signal: ctrl.signal,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
+            });
+            clearTimeout(tout);
+            const data = await res.json();
+            return data.reply || null;
+        }
 
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             abortController = new AbortController();
 
-            // جرّب HF Space أولاً (أكثر استقراراً)
-            try {
-                const hfRes = await fetch(HF_SPACE_API, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: [userText, CURRENT_LANGUAGE] })
-                });
-                const hfData = await hfRes.json();
-                if (hfData.data?.[0]) return hfData.data[0];
-            } catch (e) { /* HF Space غير متاح */ }
+            // ترتيب الاستدعاء حسب المزود المختار
+            const order = {
+                groq:     [callGroq, callGemini, callKiloClaw],
+                gemini:   [callGemini, callGroq, callKiloClaw],
+                kiloclaw: [callKiloClaw, callGroq, callGemini],
+            };
+            const funcs = order[AI_PROVIDER] || order.groq;
 
-            // جرّب Backend أولاً
-            try {
-                const ctrl = new AbortController();
-                const tout = setTimeout(() => ctrl.abort(), 6000);
-                const res = await fetch(KILOCLAW_BACKEND + '/chat', {
-                    method: 'POST', signal: ctrl.signal,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
-                });
-                clearTimeout(tout);
-                const data = await res.json();
-                if (data.reply) return data.reply;
-            } catch (e) { /* Backend غير متاح */ }
-
-            // Groq مباشرة كبديل
-            try {
-                const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
-                        messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
-                        max_tokens: 300, temperature: 0.7
-                    })
-                });
-                const data = await res.json();
-                return data.choices?.[0]?.message?.content || 'لم أفهم الطلب.';
-            } catch (e) {
-                if (e.name === 'AbortError') return null;
-                return 'تعذّر الاتصال.';
+            for (const fn of funcs) {
+                try {
+                    const reply = await fn(userText);
+                    if (reply) return reply;
+                } catch (e) {
+                    if (e.name === 'AbortError') return null;
+                    console.warn(fn.name, 'failed:', e.message);
+                }
             }
+            return 'تعذّر الاتصال بجميع المزودين.';
         }
 
         // ── Speech ────────────────────────────────────────────────
