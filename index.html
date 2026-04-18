@@ -297,7 +297,7 @@
             <select id="language-select">
                 <option value="ar">العربية</option>
                 <option value="en">English</option>
-                <option value="ja">日本語</option>
+                <option value="ja">日本語 (دائماً ياباني)</option>
             </select>
 
             <p>اختر الموديل (Avatar):</p>
@@ -321,7 +321,7 @@
             <select id="settings-language-select">
                 <option value="ar">العربية</option>
                 <option value="en">English</option>
-                <option value="ja">日本語</option>
+                <option value="ja">日本語 (دائماً ياباني)</option>
             </select>
 
             <p>اختر الموديل (Avatar):</p>
@@ -437,7 +437,7 @@
         const SYSTEM_PROMPTS = {
             ar: "أنتِ 'أليشيا' (Alisha)، مساعدة ذكية ومرحة بهيئة فتاة أنمي. تحدثي بعفوية ودون رسمية مفرطة. استخدمي الذاكرة المتاحة لديكِ للتعرف على المستخدم (غيلان) وتذكر تفضيلاته. ردي دائماً بالعربية بأسلوب ودود وقصير.",
             en: "You are 'Alisha', a smart and playful anime girl assistant. Speak naturally and casually. Use your memory to recognize the user (Ghailan) and remember his preferences. Always respond in a friendly and brief manner.",
-            ja: "あなたは「アリシャ」(Alisha)、アニメの女の子の姿をした賢くて遊び心のあるアシスタنتです。自然でカジュアルに話してください。メモリを使用してユーザー（ガイラン）を認識し、彼の好みを覚えておいてください。"
+            ja: "あなたは「アリシャ」(Alisha)です。ユーザー（ガイラン）はあなたにアラビア語で話しかけますが、あなたは必ず**日本語のみ**で返答してください。アラビア語は絶対に使わないでください。短く、可愛らしく、親しみやすい日本語で話してください。返答は日本語の文字（漢字、ひらがな、カタカナ）だけで構成してください。"
         };
 
         let HF_API_KEY = '';
@@ -560,7 +560,6 @@
                 dirLight.position.set(1, 1, 1).normalize();
                 threeScene.add(dirLight);
 
-                // Load Background HDR if exists
                 new RGBELoader().load('./assets/backgrounds/background.hdr', (texture) => {
                     texture.mapping = THREE.EquirectangularReflectionMapping;
                     threeScene.environment = texture;
@@ -673,9 +672,22 @@
             return new Promise((resolve) => {
                 updateStatus(CURRENT_LANGUAGE === 'ar' ? 'جاري التحدث...' : 'Speaking...');
                 const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+                
+                // Force Japanese voice if CURRENT_LANGUAGE is 'ja'
+                if (CURRENT_LANGUAGE === 'ja') {
+                    utterance.lang = 'ja-JP';
+                    // Optional: Find a specific Japanese voice if available
+                    const voices = window.speechSynthesis.getVoices();
+                    const jaVoice = voices.find(v => v.lang === 'ja-JP');
+                    if (jaVoice) utterance.voice = jaVoice;
+                } else {
+                    utterance.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+                }
                 
                 utterance.onstart = () => {
+                    // Only show bubble if NOT Japanese, or if you want to see Japanese text
+                    // The user said "I want only the sound to appear" - but usually they mean "I want it to speak in the chosen language"
+                    // Let's keep bubble but ensure it matches what's spoken.
                     showBubble(text);
                     startLipSync();
                 };
@@ -728,7 +740,10 @@
         function changeLanguage(lang) {
             CURRENT_LANGUAGE = lang;
             localStorage.setItem('ALISHA_LANGUAGE', lang);
-            if (recognition) recognition.lang = LANGUAGE_CONFIG[lang].lang;
+            if (recognition) {
+                // User speaks Arabic even if Alisha responds in Japanese
+                recognition.lang = 'ar-SA'; 
+            }
             updateStatus(LANGUAGE_CONFIG[lang].name);
             settingsLanguageSelect.value = lang;
         }
@@ -763,7 +778,8 @@
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+            // User always speaks Arabic
+            recognition.lang = 'ar-SA'; 
             recognition.onstart = () => micBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micBtn.classList.remove('recording');
@@ -821,6 +837,9 @@
             CURRENT_AVATAR = savedAvatar;
             CURRENT_MODEL_PATH = MODEL_PATHS[savedAvatar];
             SELECTED_MODEL = savedModel;
+
+            // Load voices once to ensure they are available
+            window.speechSynthesis.getVoices();
 
             if (HF_API_KEY) {
                 apiModal.classList.add('hidden');
