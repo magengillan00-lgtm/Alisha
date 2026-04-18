@@ -938,43 +938,21 @@
             updateStatus('Thinking...');
             abortController = new AbortController();
             try {
-                // أولاً: جرّب Backend KiloClaw
+                const controller = new AbortController();
+                const tout = setTimeout(() => controller.abort(), 10000);
                 const res = await fetch(KILOCLAW_BACKEND + '/chat', {
                     method: 'POST',
-                    signal: abortController.signal,
+                    signal: controller.signal,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, memory: persistentMemory, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
                 });
+                clearTimeout(tout);
                 const data = await res.json();
                 return data.reply || 'لم أفهم الطلب.';
             } catch (e) {
                 if (e.name === 'AbortError') return null;
-                // إذا فشل Backend، استخدم API المستخدم مباشرة
-                if (!API_KEY) return 'تعذّر الاتصال بالخادم.';
-                return await callDirectAPI(userText);
+                return 'تعذّر الاتصال بالخادم.';
             }
-        }
-
-        async function callDirectAPI(userText) {
-            const provider = API_PROVIDER;
-            const endpoints = {
-                groq: 'https://api.groq.com/openai/v1/chat/completions',
-                openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-                huggingface: 'https://router.huggingface.co/v1/chat/completions'
-            };
-            try {
-                const res = await fetch(endpoints[provider] || endpoints.groq, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: SELECTED_MODEL,
-                        messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
-                        max_tokens: 300, temperature: 0.7
-                    })
-                });
-                const data = await res.json();
-                return data.choices?.[0]?.message?.content || 'لم أفهم.';
-            } catch (e) { return 'تعذّر الاتصال.'; }
         }
 
         // ── Speech ────────────────────────────────────────────────
@@ -993,7 +971,9 @@
                 utterance.onend = () => { stopLipSync(); updateStatus('Ready'); resolve(); };
                 utterance.onerror = () => { stopLipSync(); updateStatus('Ready'); resolve(); };
                 window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(utterance);
+                // بعض المتصفحات تحتاج resume() قبل speak()
+                if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                setTimeout(() => window.speechSynthesis.speak(utterance), 50);
             });
         }
 
@@ -1034,7 +1014,17 @@
 
         textInput.addEventListener('focus', () => setTimeout(handleResize, 300));
         textInput.addEventListener('blur', () => setTimeout(handleResize, 300));
+        // تفعيل TTS عند أول تفاعل (ضروري للمتصفحات الحديثة)
+        let ttsUnlocked = false;
+        function unlockTTS() {
+            if (ttsUnlocked) return;
+            const u = new SpeechSynthesisUtterance('');
+            window.speechSynthesis.speak(u);
+            ttsUnlocked = true;
+        }
+
         sendBtn.addEventListener('click', () => {
+            unlockTTS();
             const text = textInput.value.trim();
             if (text) { textInput.value = ''; processUserInput(text); }
         });
@@ -1058,6 +1048,7 @@
             recognition.onerror = () => micBtn.classList.remove('recording');
         }
         micBtn.addEventListener('click', () => {
+            unlockTTS();
             if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         });
