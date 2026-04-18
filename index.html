@@ -495,9 +495,12 @@
         <div id="loading-error" style="color:#ff6b9d;margin-top:10px;"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
-    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js" 
+        onerror="console.warn('PIXI CDN failed')"></script>
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"
+        onerror="console.warn('Cubism CDN failed')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"
+        onerror="console.warn('Live2D CDN failed')"></script>
     <script type="importmap">
     { "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js",
@@ -843,13 +846,27 @@
             loadingOverlay.classList.remove('hidden');
             loadingError.textContent = '';
             const path = MODEL_PATHS[CURRENT_AVATAR];
-            if (path.endsWith('.vrm')) { is3D = true; await init3D(path); }
-            else { is3D = false; await initLive2D(path); }
+            if (path.endsWith('.vrm')) {
+                is3D = true;
+                await init3D(path);
+            } else {
+                // تحقق أن مكتبات Live2D محملة
+                if (typeof PIXI === 'undefined' || !PIXI.live2d) {
+                    showError('جاري تحميل المكتبات... أعد المحاولة');
+                    setTimeout(() => initAvatar(), 3000);
+                    return;
+                }
+                is3D = false;
+                await initLive2D(path);
+            }
         }
 
         async function initLive2D(path) {
             try {
-                pixiApp = new PIXI.Application({ view: document.createElement('canvas'), autoStart: true, backgroundAlpha: 0, resizeTo: window });
+                pixiApp = new PIXI.Application({
+                    view: document.createElement('canvas'),
+                    autoStart: true, backgroundAlpha: 0, resizeTo: window
+                });
                 canvasContainer.appendChild(pixiApp.view);
                 live2dModel = await PIXI.live2d.Live2DModel.from(path);
                 pixiApp.stage.addChild(live2dModel);
@@ -857,7 +874,18 @@
                 window.addEventListener('resize', handleResize);
                 loadingOverlay.classList.add('hidden');
                 updateStatus('Ready');
-            } catch (e) { showError(e.message); }
+            } catch (e) {
+                console.error('Live2D error:', e);
+                // إذا فشل الموديل الحالي، جرّب موديل آخر
+                if (CURRENT_AVATAR !== 'kei') {
+                    console.warn('Trying fallback avatar: kei');
+                    CURRENT_AVATAR = 'kei';
+                    CURRENT_MODEL_PATH = MODEL_PATHS['kei'];
+                    await initLive2D(CURRENT_MODEL_PATH);
+                } else {
+                    showError('فشل تحميل الأفاتار. تحقق من الاتصال ثم أعد تحميل الصفحة.');
+                }
+            }
         }
 
         async function init3D(path) {
