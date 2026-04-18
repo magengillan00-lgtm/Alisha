@@ -164,59 +164,61 @@
             box-shadow: 0 8px 20px var(--primary-glow);
         }
 
+        /* ── Input Bar ── */
         #controls-area {
             position: fixed;
-            bottom: 40px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             z-index: 10;
-            width: 90%;
-            max-width: 500px;
-            justify-content: center;
+            width: 92%;
+            max-width: 560px;
+            background: rgba(15, 12, 41, 0.75);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,107,157,0.3);
+            border-radius: 28px;
+            padding: 10px 14px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,107,157,0.1);
         }
 
         #text-input {
             flex: 1;
-            padding: 16px 24px;
-            border-radius: 20px;
-            border: 1px solid var(--glass-border);
-            background: var(--glass-bg);
-            backdrop-filter: blur(15px);
+            padding: 12px 16px;
+            border-radius: 18px;
+            border: none;
+            background: transparent;
             color: white;
-            font-size: 16px;
+            font-size: 15px;
             outline: none;
-            transition: all 0.3s ease;
             text-align: right;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            min-width: 0;
         }
-        #text-input:focus {
-            border-color: var(--primary-color);
-            background: rgba(255, 255, 255, 0.15);
-        }
+        #text-input::placeholder { color: rgba(255,255,255,0.35); }
 
         .action-btn {
-            width: 56px; height: 56px;
-            border-radius: 18px;
-            border: 1px solid var(--glass-border);
-            background: var(--glass-bg);
-            backdrop-filter: blur(15px);
+            width: 44px; height: 44px;
+            border-radius: 14px;
+            border: none;
+            background: rgba(255,107,157,0.15);
             color: white;
-            font-size: 22px;
+            font-size: 18px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            flex-shrink: 0;
         }
-        .action-btn:hover { background: var(--primary-color); border-color: var(--primary-color); transform: scale(1.05); }
+        .action-btn:hover { background: var(--primary-color); transform: scale(1.08); }
         .action-btn.recording { background: #ff4444; animation: pulse-red 1.5s infinite; }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.7); } 70% { box-shadow: 0 0 0 15px rgba(255,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); } }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.7); } 70% { box-shadow: 0 0 0 12px rgba(255,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); } }
 
-        #stop-btn { background: rgba(255,68,68,0.2); border-color: #ff4444; color: #ff4444; display: none; }
+        #send-btn { background: var(--primary-color); }
+        #send-btn:hover { background: #ff3d78; }
+        #stop-btn { background: rgba(255,68,68,0.2); color: #ff4444; display: none; }
         #stop-btn.visible { display: flex; }
 
         #status-bar {
@@ -483,7 +485,7 @@
     <div id="controls-area">
         <button class="action-btn" id="mic-btn">🎤</button>
         <input type="text" id="text-input" placeholder="تحدثي معي يا أليشيا..." />
-        <button class="action-btn" id="send-btn">🚀</button>
+        <button class="action-btn" id="send-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
         <button class="action-btn" id="stop-btn">🛑</button>
     </div>
 
@@ -828,7 +830,7 @@
             live2dModel.scale.set(scale);
             live2dModel.anchor.set(0.5, 0.5);
             live2dModel.x = window.innerWidth / 2;
-            live2dModel.y = window.innerHeight / 2 + 50;
+            live2dModel.y = window.innerHeight / 2;
         }
 
         async function initAvatar() {
@@ -937,7 +939,7 @@
                     method: 'POST',
                     signal: abortController.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, memory: persistentMemory })
+                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, memory: persistentMemory, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
                 });
                 const data = await res.json();
                 return data.reply || 'لم أفهم الطلب.';
