@@ -569,11 +569,10 @@
     </div>
 
     <div id="mic-fab">
-        <button id="mic-fab-btn" title="تحدث">🎤</button>
+        <button class="action-btn" id="mic-fab-btn" title="تحدث">🎤</button>
     </div>
 
     <div id="controls-area">
-        <button class="action-btn" id="mic-btn">🎤</button>
         <input type="text" id="text-input" placeholder="تحدثي معي يا أليشيا..." />
         <button class="action-btn" id="send-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
         <button class="action-btn" id="stop-btn">🛑</button>
@@ -674,7 +673,6 @@
         const textInput = document.getElementById('text-input');
         const sendBtn = document.getElementById('send-btn');
         const stopBtn = document.getElementById('stop-btn');
-        const micBtn = document.getElementById('mic-btn');
         const statusText = document.getElementById('status-bar');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingError = document.getElementById('loading-error');
@@ -1239,7 +1237,7 @@
 
         async function processUserInput(text) {
             if (!text.trim()) return;
-            sendBtn.disabled = true; micBtn.disabled = true;
+            sendBtn.disabled = true;
             stopBtn.classList.add('visible');
             try {
                 const aiResponse = await getAIResponse(text);
@@ -1252,7 +1250,7 @@
                 console.error(e);
                 updateStatus('خطأ');
             }
-            sendBtn.disabled = false; micBtn.disabled = false;
+            sendBtn.disabled = false;
             stopBtn.classList.remove('visible');
         }
 
@@ -1300,10 +1298,10 @@
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.lang = MIC_INPUT_LANG;
-            recognition.onstart = () => micBtn.classList.add('recording');
+            recognition.onstart = () => micFabBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
-            recognition.onend = () => micBtn.classList.remove('recording');
-            recognition.onerror = () => micBtn.classList.remove('recording');
+            recognition.onend = () => micFabBtn.classList.remove('recording');
+            recognition.onerror = () => micFabBtn.classList.remove('recording');
         }
         function startMicCapture() {
             const wasLocked = !ttsUnlocked;
@@ -1315,7 +1313,7 @@
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
 
-        micBtn.addEventListener('click', startMicCapture);
+        micFabBtn.addEventListener("click", startMicCapture);
         micFabBtn.addEventListener('click', startMicCapture);
 
         // ── Memory ────────────────────────────────────────────────
