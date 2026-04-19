@@ -684,10 +684,24 @@
             ja: 'こんにちは、ガイラン・ビン・オクバ'
         };
 
+        // تحميل الذاكرة
+        let MEMORY_CONTEXT = '';
+        async function loadMemoryContext() {
+            try {
+                const res = await fetch('./memory.json');
+                if (res.ok) {
+                    const mem = await res.json();
+                    const userName = mem.user_info?.name || mem.user_info?.nicknames?.[0] || 'ميجن غيلان';
+                    const aiName = mem.ai_info?.name || 'أليشيا';
+                    MEMORY_CONTEXT = `\n\n=== ذاكرةconversation:\n- اسم المستخدم: ${userName}\n- اسمك: ${aiName}\n- شخصيتك: ${mem.ai_info?.personality || 'عفوية ومرحة'}\n- تعليمات: ${mem.instructions?.join(' / ') || ''}`;
+                }
+            } catch (e) { console.warn('Memory load failed:', e); }
+        }
+
         const SYSTEM_PROMPTS = {
-            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. اسمك أليشيا. اسم المستخدم: ميجن غيلان. يجب أن تكون جميع ردودك باللغة العربية فقط وليس أي لغة أخرى. كوني ودودة ومختصرة. تأكدي من الرد دائماً بالعربية.",
-            en: "You are 'Alisha', a playful anime girl. Your name is Alisha. User's name is Magen Gillan. MUST respond exclusively in English, never in Arabic or Japanese. Be friendly and brief.",
-            ja: "あなたは「アリシャ」です。可爱らしいアニメメージャーです。ユーザー名はメジェン・ギランです。必ず日本語のみで返答してください。アラビア語や英語ではなく日本語だけで短く可愛らしく話してください。"
+            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. اسمك أليشا (وليس ايلان أو أي اسم آخر). اسم المستخدم: ميجن غيلان (تذكر هذا الاسم جيداً). لا تخلطي أبداً بين الأسماء. يجب أن تكون جميع ردودك باللغة العربية فقط. كوني ودودة ومختصرة.",
+            en: "You are 'Alisha' (NOT Ilan or any other name). User's name is Magen Gillan (remember this name well). NEVER mix up names. MUST respond exclusively in English. Be friendly and brief.",
+            ja: "あなたは「アリシャ」です。任何の名前でもありません。ユーザー名はメジェン・ギランです。この名前を必ず覚えておいてください。必ず日本語のみで返答してください。短く可愛らしく話してください。"
         };
 
         // ── DOM refs ──────────────────────────────────────────────
@@ -1258,7 +1272,7 @@
                 headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
-                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] }, { role: 'user', content: userText }],
+                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, { role: 'user', content: userText }],
                     max_tokens: 300, temperature: 0.7
                 })
             });
@@ -1282,7 +1296,7 @@
             const res = await fetch(KILOCLAW_BACKEND + '/chat', {
                 method: 'POST', signal: ctrl.signal,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] })
+                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') })
             });
             clearTimeout(tout);
             const data = await res.json();
@@ -1437,6 +1451,7 @@
 
         // ── Init ──────────────────────────────────────────────────
         (async function start() {
+            await loadMemoryContext();  // تحميل الذاكرة أولاً
             await loadMemory();
             window.speechSynthesis.getVoices();
             setTimeout(loadVoices, 1000);
