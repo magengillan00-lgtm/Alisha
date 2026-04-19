@@ -438,20 +438,6 @@
             <h2>🌸 Alisha AI</h2>
             <p style="color:#88ff99;font-size:13px;margin-bottom:20px;">⚡ مدعومة بـ KiloClaw — لا تحتاج مفتاح</p>
 
-            <!-- Step 1: API Key (optional) -->
-            <div id="step-1">
-                <p style="color:#aaa;font-size:13px;margin-bottom:15px;">
-                    أدخل مفتاح Groq أو HuggingFace إذا كان لديك.<br>
-                    أو اتركه فارغاً لاستخدام KiloClaw المجاني.
-                </p>
-                <input type="password" id="api-key-input" placeholder="أدخل مفتاح API (اختياري)" 
-                       style="width:100%;padding:12px;border-radius:8px;border:1px solid #444;background:rgba(255,255,255,0.05);color:white;margin-bottom:10px;" />
-                <div id="key-error" style="color:#ff6b6b;font-size:12px;display:none;margin-bottom:10px;"></div>
-                <button id="verify-key-btn" style="width:100%;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#ff6b9d,#7c4dff);color:white;font-weight:bold;cursor:pointer;">
-                    التحقق من المفتاح →
-                </button>
-            </div>
-
             <!-- Step 2: Model + Language + Avatar -->
             <div id="step-2">
                 <p class="section-title">🤖 اختر الموديل</p>
@@ -490,11 +476,7 @@
                         <div class="bg-label">غرفة</div>
                     </div>
                 </div>
-                            <div class="setup-dots" style="display:flex;justify-content:center;gap:8px;margin-bottom:15px;">
-                <div id="dot-1" class="step-dot active"></div>
-                <div id="dot-2" class="step-dot"></div>
-            </div>
-            <button id="start-btn">🌸 تشغيل أليشيا</button>
+                <button id="start-btn">🌸 تشغيل أليشيا</button>
             </div>
         </div>
     </div>
@@ -536,6 +518,13 @@
             </select>
 
             <p class="section-title">🎙️ لغة الإدخال الصوتي</p>
+            <select id="s-mic-language">
+                <option value="ar-SA">🇸🇦 العربية (افتراضي)</option>
+                <option value="en-US">🇺🇸 English</option>
+                <option value="ja-JP">🇯🇵 日本語</option>
+            </select>
+
+            <p class="section-title" id="s-voice-title">🔊 الصوت</p>
             <div id="s-voice-list"></div>
 
             <p class="section-title">🧝 الأفاتار</p>
@@ -630,7 +619,7 @@
         let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
         let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
         let CURRENT_BG = localStorage.getItem('ALISHA_BG') || 'bg-space';
-        let LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang = localStorage.getItem('ALISHA_LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang') || 'ar-SA';
+        let MIC_INPUT_LANG = localStorage.getItem('ALISHA_MIC_INPUT_LANG') || 'ar-SA';
         let SELECTED_VOICE_URI = localStorage.getItem('ALISHA_VOICE') || '';
         let availableVoices = [];
         let persistentMemory = null;
@@ -656,9 +645,9 @@
         };
 
         const WELCOME_MESSAGES = {
-            ar: 'مرحباً يا ميجن غيلان',
-            en: 'Hello Magen Gillan',
-            ja: 'こんにちは、メイジン・ギラン'
+            ar: 'مرحباً يا غيلان بن عقبة',
+            en: 'Hello Ghaylan Bin Oqbah',
+            ja: 'こんにちは、ガイラン・ビン・オクバ'
         };
 
         const SYSTEM_PROMPTS = {
@@ -793,71 +782,19 @@
             }
         }
 
-        
-        // التحقق من الموديل قبل اختياره
-        const modelStatusCache = {};
-        async function verifyModel(modelId) {
-            if (modelStatusCache[modelId] !== undefined) return modelStatusCache[modelId];
-            try {
-                const testRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: modelId,
-                        messages: [{ role: 'user', content: 'hi' }],
-                        max_tokens: 5
-                    })
-                });
-                const ok = testRes.ok;
-                modelStatusCache[modelId] = ok;
-                return ok;
-            } catch (e) {
-                modelStatusCache[modelId] = false;
-                return false;
-            }
-        }
-
-function renderModelList(models) {
+        function renderModelList(models) {
             if (!models.length) {
                 modelListContainer.innerHTML = '<div style="color:#aaa;font-size:13px;padding:10px;">لا توجد موديلات متاحة</div>';
                 return;
             }
             modelListContainer.innerHTML = models.map(m =>
-                `<div class="model-item ${m.id === SELECTED_MODEL ? 'selected' : ''}" data-id="${m.id}" data-status="pending">
-                    <span class="model-status">⚪</span>
+                `<div class="model-item ${m.id === SELECTED_MODEL ? 'selected' : ''}" data-id="${m.id}">
                     <span>${m.name}</span>
                     <span class="model-tag">${m.tag}</span>
                 </div>`
             ).join('');
-            
-            // التحقق من كل موديل فقط لو يوجد مفتاح API
-            if (API_KEY) {
-                modelListContainer.querySelectorAll('.model-item').forEach(async el => {
-                    const mid = el.dataset.id;
-                    const statusSpan = el.querySelector('.model-status');
-                    const ok = await verifyModel(mid);
-                    statusSpan.textContent = ok ? '✅' : '❌';
-                    el.dataset.status = ok ? 'ok' : 'fail';
-                    if (!ok) el.style.opacity = '0.5';
-                });
-            }
-            
             modelListContainer.querySelectorAll('.model-item').forEach(el => {
-                el.addEventListener('click', async () => {
-                    const status = el.dataset.status;
-                    if ((status === 'fail' || status === 'unknown') && API_KEY) {
-                        // إعادة التحقق
-                        const statusSpan = el.querySelector('.model-status');
-                        statusSpan.textContent = '⏳';
-                        const ok = await verifyModel(el.dataset.id);
-                        statusSpan.textContent = ok ? '✅' : '❌';
-                        el.dataset.status = ok ? 'ok' : 'fail';
-                        if (!ok) { el.style.opacity = '0.5'; return; }
-                        el.style.opacity = '1';
-                    }
+                el.addEventListener('click', () => {
                     modelListContainer.querySelectorAll('.model-item').forEach(x => x.classList.remove('selected'));
                     el.classList.add('selected');
                     SELECTED_MODEL = el.dataset.id;
@@ -870,24 +807,7 @@ function renderModelList(models) {
 
         verifyKeyBtn.addEventListener('click', async () => {
             const key = apiKeyInput.value.trim();
-            
-            // إذا لا يوجد مفتاح، استخدم الوضع المجاني
-            if (!key) {
-                step1.classList.add('hidden');
-                step2.classList.remove('hidden');
-                document.getElementById('dot-1').classList.remove('active');
-                document.getElementById('dot-1').classList.add('done');
-                document.getElementById('dot-2').classList.add('active');
-                // عرض الموديلات الافتراضية
-                renderModelList([
-                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', tag: 'Groq ⚡' },
-                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', tag: 'سريع' },
-                    { id: 'gemma2-9b-it', name: 'Gemma 2 9B', tag: 'Google' },
-                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', tag: 'قوي' }
-                ]);
-                return;
-            }
-            
+            if (!key) { keyError.textContent = 'أدخل المفتاح أولاً'; keyError.style.display = 'block'; return; }
             verifyKeyBtn.textContent = '⏳ جاري التحقق...';
             verifyKeyBtn.disabled = true;
             keyError.style.display = 'none';
@@ -967,7 +887,7 @@ function renderModelList(models) {
 
         settingsBtn.addEventListener('click', () => {
             sLanguage.value = CURRENT_LANGUAGE;
-            sMicLanguage.value = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+            sMicLanguage.value = MIC_INPUT_LANG;
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
             syncProviderCards();
@@ -1005,8 +925,8 @@ function renderModelList(models) {
                 CURRENT_LANGUAGE = newLang;
                 localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
             }
-            LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang = newMicLang;
-            localStorage.setItem('ALISHA_LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang', LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang);
+            MIC_INPUT_LANG = newMicLang;
+            localStorage.setItem('ALISHA_MIC_INPUT_LANG', MIC_INPUT_LANG);
 
             if (avatarChanged) {
                 CURRENT_AVATAR = newAvatar;
@@ -1358,7 +1278,9 @@ function renderModelList(models) {
         sendBtn.addEventListener('click', () => {
             const wasLocked = !ttsUnlocked;
             unlockTTS();
-            
+            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
+                setTimeout(() => speakWelcome(), 120);
+            }
             const text = textInput.value.trim();
             if (text) { textInput.value = ''; processUserInput(text); }
         });
@@ -1375,7 +1297,7 @@ function renderModelList(models) {
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+            recognition.lang = MIC_INPUT_LANG;
             recognition.onstart = () => micFabBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micFabBtn.classList.remove('recording');
@@ -1384,8 +1306,10 @@ function renderModelList(models) {
         function startMicCapture() {
             const wasLocked = !ttsUnlocked;
             unlockTTS();
-            
-            if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
+            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
+                setTimeout(() => speakWelcome(), 120);
+            }
+            if (recognition) { recognition.lang = MIC_INPUT_LANG; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
 
