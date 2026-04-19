@@ -196,7 +196,7 @@ Alisha/
 ├── 📁 .github/
 │   └── 📁 workflows/
 │       └── deploy.yml            # GitHub Actions CI/CD
-└── 📁 agents/                    # وحدات AI المتخصصة
+└── (clean build)                # no legacy agent/command packs
 ```
 
 ---
