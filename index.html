@@ -209,6 +209,22 @@
             width: 66px;
             height: 66px;
             border-radius: 999px;
+        }
+        #recording-indicator {
+            position: absolute;
+            bottom: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff0000;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            white-space: nowrap;
+            animation: blink 0.5s infinite;
+        }
+        #recording-indicator.hidden { display: none; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
             border: 2px solid rgba(255,255,255,0.2);
             background: linear-gradient(135deg, #ff6b9d, #7c4dff);
             color: #fff;
@@ -246,7 +262,12 @@
             flex-shrink: 0;
         }
         .action-btn:hover { background: var(--primary-color); transform: scale(1.08); }
-        .action-btn.recording { background: #ff4444; animation: pulse-red 1.5s infinite; }
+        .action-btn.recording { 
+    background: #ff0000 !important; 
+    animation: pulse-red 0.8s infinite;
+    box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+    transform: scale(1.15);
+}
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.7); } 70% { box-shadow: 0 0 0 12px rgba(255,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); } }
 
         #send-btn { background: var(--primary-color); }
@@ -570,6 +591,7 @@
 
     <div id="mic-fab">
         <button class="action-btn" id="mic-fab-btn" title="تحدث">🎤</button>
+        <div id="recording-indicator" class="hidden">● جاري التسجيل</div>
     </div>
 
     <div id="controls-area">
@@ -651,9 +673,9 @@
         };
 
         const SYSTEM_PROMPTS = {
-            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. يجب أن تكون جميع ردودك باللغة العربية فقط. كوني ودودة ومختصرة.",
-            en: "You are 'Alisha', a playful anime girl. MUST respond exclusively in English. Be friendly and brief.",
-            ja: "あなたは「アリシャ」です。必ず日本語のみで返答してください。短く、可愛らしく話してください。"
+            ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. اسمك أليشيا. اسم المستخدم: ميجن غيلان. يجب أن تكون جميع ردودك باللغة العربية فقط وليس أي لغة أخرى. كوني ودودة ومختصرة. تأكدي من الرد دائماً بالعربية.",
+            en: "You are 'Alisha', a playful anime girl. Your name is Alisha. User's name is Magen Gillan. MUST respond exclusively in English, never in Arabic or Japanese. Be friendly and brief.",
+            ja: "あなたは「アリシャ」です。可爱らしいアニメメージャーです。ユーザー名はメジェン・ギランです。必ず日本語のみで返答してください。アラビア語や英語ではなく日本語だけで短く可愛らしく話してください。"
         };
 
         // ── DOM refs ──────────────────────────────────────────────
