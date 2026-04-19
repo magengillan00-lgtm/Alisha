@@ -510,11 +510,18 @@
                 <option value="">-- اختر الموديل --</option>
             </select>
 
-            <p class="section-title">🌐 اللغة</p>
+            <p class="section-title">🌐 لغة الرد</p>
             <select id="s-language">
                 <option value="ar">🇸🇦 العربية</option>
                 <option value="en">🇺🇸 English</option>
                 <option value="ja">🇯🇵 日本語</option>
+            </select>
+
+            <p class="section-title">🎙️ لغة الإدخال الصوتي</p>
+            <select id="s-mic-language">
+                <option value="ar-SA">🇸🇦 العربية (افتراضي)</option>
+                <option value="en-US">🇺🇸 English</option>
+                <option value="ja-JP">🇯🇵 日本語</option>
             </select>
 
             <p class="section-title" id="s-voice-title">🔊 الصوت</p>
@@ -613,6 +620,7 @@
         let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
         let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
         let CURRENT_BG = localStorage.getItem('ALISHA_BG') || 'bg-space';
+        let MIC_INPUT_LANG = localStorage.getItem('ALISHA_MIC_INPUT_LANG') || 'ar-SA';
         let SELECTED_VOICE_URI = localStorage.getItem('ALISHA_VOICE') || '';
         let availableVoices = [];
         let persistentMemory = null;
@@ -675,6 +683,7 @@
         const sCloseBtn = document.getElementById('s-close-btn');
         const sModel = document.getElementById('s-model');
         const sLanguage = document.getElementById('s-language');
+        const sMicLanguage = document.getElementById('s-mic-language');
         const sAvatar = document.getElementById('s-avatar');
         const sVoiceList = document.getElementById('s-voice-list');
 
@@ -880,6 +889,7 @@
 
         settingsBtn.addEventListener('click', () => {
             sLanguage.value = CURRENT_LANGUAGE;
+            sMicLanguage.value = MIC_INPUT_LANG;
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
             syncProviderCards();
@@ -904,6 +914,7 @@
 
         sSaveBtn.addEventListener('click', async () => {
             const newLang = sLanguage.value;
+            const newMicLang = sMicLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
             const languageChanged = newLang !== CURRENT_LANGUAGE;
@@ -916,6 +927,9 @@
                 CURRENT_LANGUAGE = newLang;
                 localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
             }
+            MIC_INPUT_LANG = newMicLang;
+            localStorage.setItem('ALISHA_MIC_INPUT_LANG', MIC_INPUT_LANG);
+
             if (avatarChanged) {
                 CURRENT_AVATAR = newAvatar;
                 localStorage.setItem('ALISHA_AVATAR', CURRENT_AVATAR);
@@ -1285,7 +1299,7 @@
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang;
+            recognition.lang = MIC_INPUT_LANG;
             recognition.onstart = () => micBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micBtn.classList.remove('recording');
@@ -1297,7 +1311,7 @@
             if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
                 setTimeout(() => speakWelcome(), 120);
             }
-            if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
+            if (recognition) { recognition.lang = MIC_INPUT_LANG; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
 
