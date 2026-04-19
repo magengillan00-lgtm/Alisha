@@ -438,6 +438,20 @@
             <h2>🌸 Alisha AI</h2>
             <p style="color:#88ff99;font-size:13px;margin-bottom:20px;">⚡ مدعومة بـ KiloClaw — لا تحتاج مفتاح</p>
 
+            <!-- Step 1: API Key (optional) -->
+            <div id="step-1">
+                <p style="color:#aaa;font-size:13px;margin-bottom:15px;">
+                    أدخل مفتاح Groq أو HuggingFace إذا كان لديك.<br>
+                    أو اتركه فارغاً لاستخدام KiloClaw المجاني.
+                </p>
+                <input type="password" id="api-key-input" placeholder="أدخل مفتاح API (اختياري)" 
+                       style="width:100%;padding:12px;border-radius:8px;border:1px solid #444;background:rgba(255,255,255,0.05);color:white;margin-bottom:10px;" />
+                <div id="key-error" style="color:#ff6b6b;font-size:12px;display:none;margin-bottom:10px;"></div>
+                <button id="verify-key-btn" style="width:100%;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#ff6b9d,#7c4dff);color:white;font-weight:bold;cursor:pointer;">
+                    التحقق من المفتاح →
+                </button>
+            </div>
+
             <!-- Step 2: Model + Language + Avatar -->
             <div id="step-2">
                 <p class="section-title">🤖 اختر الموديل</p>
@@ -476,7 +490,11 @@
                         <div class="bg-label">غرفة</div>
                     </div>
                 </div>
-                <button id="start-btn">🌸 تشغيل أليشيا</button>
+                            <div class="setup-dots" style="display:flex;justify-content:center;gap:8px;margin-bottom:15px;">
+                <div id="dot-1" class="step-dot active"></div>
+                <div id="dot-2" class="step-dot"></div>
+            </div>
+            <button id="start-btn">🌸 تشغيل أليشيا</button>
             </div>
         </div>
     </div>
@@ -852,7 +870,24 @@ function renderModelList(models) {
 
         verifyKeyBtn.addEventListener('click', async () => {
             const key = apiKeyInput.value.trim();
-            if (!key) { keyError.textContent = 'أدخل المفتاح أولاً'; keyError.style.display = 'block'; return; }
+            
+            // إذا لا يوجد مفتاح، استخدم الوضع المجاني
+            if (!key) {
+                step1.classList.add('hidden');
+                step2.classList.remove('hidden');
+                document.getElementById('dot-1').classList.remove('active');
+                document.getElementById('dot-1').classList.add('done');
+                document.getElementById('dot-2').classList.add('active');
+                // عرض الموديلات الافتراضية
+                renderModelList([
+                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', tag: 'Groq ⚡' },
+                    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', tag: 'سريع' },
+                    { id: 'gemma2-9b-it', name: 'Gemma 2 9B', tag: 'Google' },
+                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', tag: 'قوي' }
+                ]);
+                return;
+            }
+            
             verifyKeyBtn.textContent = '⏳ جاري التحقق...';
             verifyKeyBtn.disabled = true;
             keyError.style.display = 'none';
