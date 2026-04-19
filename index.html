@@ -574,6 +574,18 @@
                 </div>
             </div>
 
+            <div class="pro-mode-section" style="margin-top:20px;padding-top:15px;border-top:1px solid rgba(255,255,255,0.1);">
+                <p class="section-title">🔧 الوضع الاحترافي</p>
+                <p style="color:#888;font-size:12px;margin-bottom:10px;">أضف مفتاح API خاص لجلب الموديلات الحقيقية</p>
+                <div style="display:flex;gap:8px;">
+                    <input type="password" id="pro-api-key" placeholder="أدخل مفتاح API" 
+                        style="flex:1;padding:10px;border-radius:8px;border:1px solid #444;background:rgba(255,255,255,0.05);color:white;font-size:13px;" />
+                    <button id="pro-verify-btn" style="padding:10px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#ff6b9d,#7c4dff);color:white;font-size:12px;cursor:pointer;">تحقق</button>
+                </div>
+                <div id="pro-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:5px;"></div>
+                <div id="pro-models-container" style="margin-top:10px;max-height:150px;overflow-y:auto;"></div>
+            </div>
+
             <button id="s-save-btn">💾 حفظ</button>
             <button id="s-close-btn" class="btn-secondary">إغلاق</button>
         </div>
@@ -975,6 +987,83 @@
                 updateStatus('مزود: ' + card.querySelector('.p-name').textContent);
                 setTimeout(() => updateStatus('Ready'), 2000);
             });
+        });
+
+        // ── Pro Mode (Settings) ─────────────────────────────────
+        const proApiKeyInput = document.getElementById('pro-api-key');
+        const proVerifyBtn = document.getElementById('pro-verify-btn');
+        const proKeyError = document.getElementById('pro-key-error');
+        const proModelsContainer = document.getElementById('pro-models-container');
+
+        proVerifyBtn.addEventListener('click', async () => {
+            const key = proApiKeyInput.value.trim();
+            if (!key) { proKeyError.textContent = 'أدخل المفتاح أولاً'; proKeyError.style.display = 'block'; return; }
+            
+            proVerifyBtn.textContent = '⏳';
+            proVerifyBtn.disabled = true;
+            proKeyError.style.display = 'none';
+            
+            try {
+                const provider = detectProvider(key);
+                let models = [];
+                
+                if (provider === 'groq') {
+                    const res = await fetch('https://api.groq.com/openai/v1/models', {
+                        headers: { 'Authorization': `Bearer ${key}` }
+                    });
+                    if (!res.ok) throw new Error('مفتاح غير صالح');
+                    const data = await res.json();
+                    models = (data.data || []).filter(m => {
+                        const id = (m.id || '').toLowerCase();
+                        return id.includes('instruct') || id.includes('chat') || id.includes('llama') || id.includes('gemma') || id.includes('mixtral') || id.includes('qwen');
+                    }).slice(0, 15).map(m => ({ id: m.id, name: m.id.split('/').pop(), tag: 'Groq' }));
+                } else if (provider === 'openrouter') {
+                    const res = await fetch('https://openrouter.ai/api/v1/models', {
+                        headers: { 'Authorization': `Bearer ${key}` }
+                    });
+                    if (!res.ok) throw new Error('مفتاح غير صالح');
+                    const data = await res.json();
+                    models = (data.models || []).slice(0, 15).map(m => ({ id: m.id, name: m.name || m.id, tag: 'OR' }));
+                } else {
+                    // HF - fixed list
+                    models = [
+                        { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B', tag: 'HF' },
+                        { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen 2.5 7B', tag: 'HF' },
+                        { id: 'meta-llama/Llama-3.2-3B-Instruct', name: 'Llama 3.2 3B', tag: 'HF' }
+                    ];
+                }
+                
+                // Save key
+                localStorage.setItem('ALISHA_API_KEY', key);
+                localStorage.setItem('ALISHA_PROVIDER', provider);
+                API_KEY = key;
+                API_PROVIDER = provider;
+                
+                // Show models
+                proModelsContainer.innerHTML = models.map(m =>
+                    `<div class="pro-model-item" data-id="${m.id}" style="padding:8px;margin:4px 0;background:rgba(255,255,255,0.05);border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+                        <span>${m.name}</span>
+                        <span style="font-size:10px;color:#888;">${m.tag}</span>
+                    </div>`
+                ).join('');
+                
+                // Click to select
+                proModelsContainer.querySelectorAll('.pro-model-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        proModelsContainer.querySelectorAll('.pro-model-item').forEach(x => x.style.background = 'rgba(255,255,255,0.05)');
+                        el.style.background = 'rgba(255,107,157,0.3)';
+                        SELECTED_MODEL = el.dataset.id;
+                        localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
+                    });
+                });
+                
+            } catch (e) {
+                proKeyError.textContent = e.message || 'فشل التحقق';
+                proKeyError.style.display = 'block';
+            }
+            
+            proVerifyBtn.textContent = 'تحقق';
+            proVerifyBtn.disabled = false;
         });
 
         // ── Avatar / 3D ───────────────────────────────────────────
