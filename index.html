@@ -192,6 +192,31 @@
             pointer-events: all;
         }
 
+        /* ── Default Mic (Bottom Center) ── */
+        #mic-fab {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%);
+            z-index: 12;
+            transition: opacity 0.25s ease;
+        }
+        #mic-fab.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #mic-fab-btn {
+            width: 66px;
+            height: 66px;
+            border-radius: 999px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: linear-gradient(135deg, #ff6b9d, #7c4dff);
+            color: #fff;
+            font-size: 28px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+            cursor: pointer;
+        }
+
         #text-input {
             flex: 1;
             padding: 12px 16px;
@@ -536,6 +561,10 @@
         <button class="glass-btn" id="settings-btn" title="الإعدادات">⚙️</button>
     </div>
 
+    <div id="mic-fab">
+        <button id="mic-fab-btn" title="تحدث">🎤</button>
+    </div>
+
     <div id="controls-area">
         <button class="action-btn" id="mic-btn">🎤</button>
         <input type="text" id="text-input" placeholder="تحدثي معي يا أليشيا..." />
@@ -831,11 +860,14 @@
         // زر إظهار/إخفاء صندوق الكتابة
         const chatToggleBtn = document.getElementById('chat-toggle-btn');
         const controlsArea = document.getElementById('controls-area');
-        let chatVisible = false;
+        const micFab = document.getElementById('mic-fab');
+        const micFabBtn = document.getElementById('mic-fab-btn');
+        let chatVisible = false; // الافتراضي: وضع المايك
         chatToggleBtn.addEventListener('click', () => {
             chatVisible = !chatVisible;
             controlsArea.classList.toggle('visible', chatVisible);
-            chatToggleBtn.textContent = chatVisible ? '✖️' : '💬';
+            micFab.classList.toggle('hidden', chatVisible);
+            chatToggleBtn.textContent = chatVisible ? '🎤' : '💬';
             if (chatVisible) setTimeout(() => textInput.focus(), 100);
         });
 
@@ -1236,11 +1268,14 @@
             recognition.onend = () => micBtn.classList.remove('recording');
             recognition.onerror = () => micBtn.classList.remove('recording');
         }
-        micBtn.addEventListener('click', () => {
+        function startMicCapture() {
             unlockTTS();
             if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
-        });
+        }
+
+        micBtn.addEventListener('click', startMicCapture);
+        micFabBtn.addEventListener('click', startMicCapture);
 
         // ── Memory ────────────────────────────────────────────────
         async function loadMemory() {
