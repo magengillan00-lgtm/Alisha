@@ -637,6 +637,12 @@
             ja: { name: '日本語', lang: 'ja-JP' }
         };
 
+        const WELCOME_MESSAGES = {
+            ar: 'مرحباً يا غيلان بن عقبة',
+            en: 'Hello Ghaylan Bin Oqbah',
+            ja: 'こんにちは、ガイラン・ビン・オクバ'
+        };
+
         const SYSTEM_PROMPTS = {
             ar: "أنتِ 'أليشيا'، فتاة أنمي ذكية ومرحة. يجب أن تكون جميع ردودك باللغة العربية فقط. كوني ودودة ومختصرة.",
             en: "You are 'Alisha', a playful anime girl. MUST respond exclusively in English. Be friendly and brief.",
@@ -839,7 +845,7 @@
             });
         });
 
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', async () => {
             CURRENT_LANGUAGE = setupLanguage.value;
             CURRENT_AVATAR = setupAvatar.value;
             localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
@@ -847,7 +853,8 @@
             localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
             localStorage.setItem('ALISHA_SETUP_DONE', '1'); // لا تسأل مرة ثانية
             setupModal.classList.add('hidden');
-            initAvatar();
+            await initAvatar();
+            if (ttsUnlocked) await speakWelcome();
         });
 
         // ── Settings Modal ────────────────────────────────────────
@@ -895,24 +902,31 @@
             });
         });
 
-        sSaveBtn.addEventListener('click', () => {
+        sSaveBtn.addEventListener('click', async () => {
             const newLang = sLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
+            const languageChanged = newLang !== CURRENT_LANGUAGE;
+            const avatarChanged = newAvatar !== CURRENT_AVATAR;
+
             if (newModel) SELECTED_MODEL = newModel;
             localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
-            if (newLang !== CURRENT_LANGUAGE) {
+
+            if (languageChanged) {
                 CURRENT_LANGUAGE = newLang;
                 localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
             }
-            if (newAvatar !== CURRENT_AVATAR) {
+            if (avatarChanged) {
                 CURRENT_AVATAR = newAvatar;
                 localStorage.setItem('ALISHA_AVATAR', CURRENT_AVATAR);
                 settingsModal.classList.add('hidden');
-                initAvatar();
+                await initAvatar();
+                if (ttsUnlocked) await speakWelcome();
                 return;
             }
+
             settingsModal.classList.add('hidden');
+            if (languageChanged && ttsUnlocked) await speakWelcome();
         });
 
         sCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
@@ -1198,6 +1212,11 @@
             });
         }
 
+        async function speakWelcome() {
+            const msg = WELCOME_MESSAGES[CURRENT_LANGUAGE] || WELCOME_MESSAGES.ar;
+            await speakText(msg);
+        }
+
         // ── Input handling ────────────────────────────────────────
         const replyBubble = document.getElementById('reply-bubble');
         let replyTimer = null;
@@ -1245,7 +1264,11 @@
         }
 
         sendBtn.addEventListener('click', () => {
+            const wasLocked = !ttsUnlocked;
             unlockTTS();
+            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
+                setTimeout(() => speakWelcome(), 120);
+            }
             const text = textInput.value.trim();
             if (text) { textInput.value = ''; processUserInput(text); }
         });
@@ -1269,7 +1292,11 @@
             recognition.onerror = () => micBtn.classList.remove('recording');
         }
         function startMicCapture() {
+            const wasLocked = !ttsUnlocked;
             unlockTTS();
+            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
+                setTimeout(() => speakWelcome(), 120);
+            }
             if (recognition) { recognition.lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
@@ -1307,7 +1334,8 @@
             // إذا سبق للمستخدم الاختيار، ابدأ مباشرة
             if (localStorage.getItem('ALISHA_SETUP_DONE')) {
                 setupModal.classList.add('hidden');
-                initAvatar();
+                await initAvatar();
+                // ملاحظة: صوت الترحيب يحتاج تفاعل مستخدم أولاً بسبب سياسات المتصفح
             }
         })();
 
