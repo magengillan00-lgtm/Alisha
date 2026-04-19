@@ -809,26 +809,28 @@ function renderModelList(models) {
             }
             modelListContainer.innerHTML = models.map(m =>
                 `<div class="model-item ${m.id === SELECTED_MODEL ? 'selected' : ''}" data-id="${m.id}" data-status="pending">
-                    <span class="model-status">⏳</span>
+                    <span class="model-status">⚪</span>
                     <span>${m.name}</span>
                     <span class="model-tag">${m.tag}</span>
                 </div>`
             ).join('');
             
-            // التحقق من كل موديل تلقائياً
-            modelListContainer.querySelectorAll('.model-item').forEach(async el => {
-                const mid = el.dataset.id;
-                const statusSpan = el.querySelector('.model-status');
-                const ok = await verifyModel(mid);
-                statusSpan.textContent = ok ? '✅' : '❌';
-                el.dataset.status = ok ? 'ok' : 'fail';
-                if (!ok) el.style.opacity = '0.5';
-            });
+            // التحقق من كل موديل فقط لو يوجد مفتاح API
+            if (API_KEY) {
+                modelListContainer.querySelectorAll('.model-item').forEach(async el => {
+                    const mid = el.dataset.id;
+                    const statusSpan = el.querySelector('.model-status');
+                    const ok = await verifyModel(mid);
+                    statusSpan.textContent = ok ? '✅' : '❌';
+                    el.dataset.status = ok ? 'ok' : 'fail';
+                    if (!ok) el.style.opacity = '0.5';
+                });
+            }
             
             modelListContainer.querySelectorAll('.model-item').forEach(el => {
                 el.addEventListener('click', async () => {
                     const status = el.dataset.status;
-                    if (status === 'fail' || status === 'pending') {
+                    if ((status === 'fail' || status === 'unknown') && API_KEY) {
                         // إعادة التحقق
                         const statusSpan = el.querySelector('.model-status');
                         statusSpan.textContent = '⏳';
