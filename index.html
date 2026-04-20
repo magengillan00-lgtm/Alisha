@@ -1272,7 +1272,7 @@
                 headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
-                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, { role: 'user', content: userText }],
+                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, ...conversationHistory, { role: 'user', content: userText }],
                     max_tokens: 300, temperature: 0.7
                 })
             });
@@ -1296,7 +1296,7 @@
             const res = await fetch(KILOCLAW_BACKEND + '/chat', {
                 method: 'POST', signal: ctrl.signal,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') })
+                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || ''), history: conversationHistory })
             });
             clearTimeout(tout);
             const data = await res.json();
@@ -1362,11 +1362,15 @@
 
         async function processUserInput(text) {
             if (!text.trim()) return;
+            // أضف رسالة المستخدم للمحادثة
+            conversationHistory.push({ role: 'user', content: text });
             sendBtn.disabled = true;
             stopBtn.classList.add('visible');
             try {
                 const aiResponse = await getAIResponse(text);
                 if (aiResponse) {
+                    // أضف رد الأليشا للمحادثة
+                    conversationHistory.push({ role: 'assistant', content: aiResponse });
                     await speakText(aiResponse);
                 } else {
                     updateStatus('لا يوجد رد');
@@ -1393,6 +1397,9 @@
         textInput.addEventListener('blur', () => setTimeout(handleResize, 300));
         // تفعيل TTS عند أول تفاعل (ضروري للمتصفحات الحديثة)
         let ttsUnlocked = false;
+        
+        // محادثة محفوظة خلال الجلسة - للأليشا تتذكر الرسائل السابقة
+        let conversationHistory = [];
         function unlockTTS() {
             if (ttsUnlocked) return;
             const u = new SpeechSynthesisUtterance('');
@@ -1401,11 +1408,7 @@
         }
 
         sendBtn.addEventListener('click', () => {
-            const wasLocked = !ttsUnlocked;
             unlockTTS();
-            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
-                setTimeout(() => speakWelcome(), 120);
-            }
             const text = textInput.value.trim();
             if (text) { textInput.value = ''; processUserInput(text); }
         });
@@ -1429,11 +1432,7 @@
             recognition.onerror = () => micFabBtn.classList.remove('recording');
         }
         function startMicCapture() {
-            const wasLocked = !ttsUnlocked;
             unlockTTS();
-            if (wasLocked && localStorage.getItem('ALISHA_SETUP_DONE')) {
-                setTimeout(() => speakWelcome(), 120);
-            }
             if (recognition) { recognition.lang = MIC_INPUT_LANG; recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
