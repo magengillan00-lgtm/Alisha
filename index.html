@@ -538,13 +538,6 @@
                 <option value="ja">🇯🇵 日本語</option>
             </select>
 
-            <p class="section-title">🎙️ لغة الإدخال الصوتي</p>
-            <select id="s-mic-language">
-                <option value="ar-SA">🇸🇦 العربية (افتراضي)</option>
-                <option value="en-US">🇺🇸 English</option>
-                <option value="ja-JP">🇯🇵 日本語</option>
-            </select>
-
             <p class="section-title" id="s-voice-title">🔊 الصوت</p>
             <div id="s-voice-list"></div>
 
@@ -653,7 +646,7 @@
         let CURRENT_LANGUAGE = localStorage.getItem('ALISHA_LANGUAGE') || 'ar';
         let CURRENT_AVATAR = localStorage.getItem('ALISHA_AVATAR') || 'kei';
         let CURRENT_BG = localStorage.getItem('ALISHA_BG') || 'bg-space';
-        let MIC_INPUT_LANG = localStorage.getItem('ALISHA_MIC_INPUT_LANG') || 'ar-SA';
+        // let MIC_INPUT_LANG = localStorage.getItem('ALISHA_MIC_INPUT_LANG') || 'ar-SA'; // removed - auto-detection
         let SELECTED_VOICE_URI = localStorage.getItem('ALISHA_VOICE') || '';
         let availableVoices = [];
         let persistentMemory = null;
@@ -729,7 +722,7 @@
         const sCloseBtn = document.getElementById('s-close-btn');
         const sModel = document.getElementById('s-model');
         const sLanguage = document.getElementById('s-language');
-        const sMicLanguage = document.getElementById('s-mic-language');
+        // mic language selection removed - auto-detection enabled
         const sAvatar = document.getElementById('s-avatar');
         const sVoiceList = document.getElementById('s-voice-list');
 
@@ -935,7 +928,7 @@
 
         settingsBtn.addEventListener('click', () => {
             sLanguage.value = CURRENT_LANGUAGE;
-            sMicLanguage.value = MIC_INPUT_LANG;
+            // mic language auto-detected
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
             syncProviderCards();
@@ -960,7 +953,6 @@
 
         sSaveBtn.addEventListener('click', async () => {
             const newLang = sLanguage.value;
-            const newMicLang = sMicLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
             const languageChanged = newLang !== CURRENT_LANGUAGE;
@@ -973,8 +965,7 @@
                 CURRENT_LANGUAGE = newLang;
                 localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
             }
-            MIC_INPUT_LANG = newMicLang;
-            localStorage.setItem('ALISHA_MIC_INPUT_LANG', MIC_INPUT_LANG);
+            // mic input language now auto-detected
 
             if (avatarChanged) {
                 CURRENT_AVATAR = newAvatar;
@@ -1360,8 +1351,28 @@
 
         function showReply(text) { /* صوت فقط */ }
 
+        // اكتشاف لغة النص تلقائياً
+        function detectLanguage(text) {
+            const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+            const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/;
+            
+            if (japaneseRegex.test(text)) return 'ja';
+            if (arabicRegex.test(text)) return 'ar';
+            return 'en'; // الافتراضي إنجليزية
+        }
+
         async function processUserInput(text) {
             if (!text.trim()) return;
+            
+            // اكتشاف لغة النص تلقائياً والاستجابة بنفس اللغة
+            const detectedLang = detectLanguage(text);
+            if (detectedLang && detectedLang !== CURRENT_LANGUAGE) {
+                CURRENT_LANGUAGE = detectedLang;
+                localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
+                // تحديث قائمة الأصوات حسب اللغة الجديدة
+                renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+            }
+            
             // أضف رسالة المستخدم للمحادثة
             conversationHistory.push({ role: 'user', content: text });
             sendBtn.disabled = true;
@@ -1425,7 +1436,7 @@
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            recognition.lang = MIC_INPUT_LANG;
+            // auto-detect input language
             recognition.onstart = () => micFabBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micFabBtn.classList.remove('recording');
@@ -1433,7 +1444,7 @@
         }
         function startMicCapture() {
             unlockTTS();
-            if (recognition) { recognition.lang = MIC_INPUT_LANG; recognition.start(); }
+            if (recognition) { recognition.start(); }
             else alert('المتصفح لا يدعم التعرف على الصوت');
         }
 
