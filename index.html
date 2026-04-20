@@ -321,109 +321,181 @@
         }
         .modal-content h2 { color: white; margin-bottom: 18px; font-weight: 700; font-size: 20px; }
         
-        /* Settings Header with Avatar */
+        /* ========================
+         Settings Header
+        ======================== */
         .settings-header {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 15px;
-            margin-bottom: 25px;
+            gap: 18px;
+            margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255,107,157,0.3);
+            border-bottom: 1px solid rgba(255, 107, 157, 0.25);
         }
+
+        /* Avatar */
         .settings-avatar {
-            width: 70px;
-            height: 70px;
+            width: 75px;
+            height: 75px;
             border-radius: 50%;
             border: 3px solid var(--primary-color);
-            box-shadow: 0 0 20px rgba(255,107,157,0.5);
+            box-shadow: 
+                0 0 15px rgba(255,107,157,0.4),
+                0 0 30px rgba(124,77,255,0.3);
             object-fit: cover;
+            transition: all 0.4s ease;
         }
+
+        .settings-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 
+                0 0 25px rgba(255,107,157,0.6),
+                0 0 40px rgba(124,77,255,0.5);
+        }
+
+        /* Title */
         .settings-title {
             text-align: right;
         }
+
         .settings-title h2 {
-            margin-bottom: 5px !important;
-            font-size: 22px !important;
+            margin-bottom: 4px !important;
+            font-size: 24px !important;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
+
         .settings-title span {
             color: #ff6b9d;
             font-size: 12px;
+            opacity: 0.85;
         }
-        
-        /* Pro Mode Styling */
+
+        /* ========================
+         Pro Mode Section
+        ======================== */
         .pro-mode-section {
-            margin-top: 20px;
-            padding: 20px;
-            border-radius: 16px;
-            background: linear-gradient(135deg, rgba(255,107,157,0.1) 0%, rgba(124,77,255,0.1) 100%);
-            border: 1px solid rgba(255,107,157,0.2);
+            margin-top: 25px;
+            padding: 22px;
+            border-radius: 18px;
+            background: linear-gradient(
+                135deg,
+                rgba(255,107,157,0.12),
+                rgba(124,77,255,0.12)
+            );
+            border: 1px solid rgba(255,107,157,0.25);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
         }
-        .pro-mode-section .section-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+
+        .pro-mode-section:hover {
+            border-color: rgba(255,107,157,0.5);
+            box-shadow: 0 0 25px rgba(255,107,157,0.2);
         }
-        .pro-mode-section .section-title::before {
-            content: '🔐';
-        }
+
+        /* API Container */
         .pro-api-container {
             display: flex;
             gap: 10px;
             align-items: stretch;
-            margin-top: 12px;
+            margin-top: 15px;
         }
+
+        /* Input */
         .pro-api-input {
             flex: 1;
-            padding: 14px 16px !important;
-            border-radius: 12px 0 0 12px !important;
-            border: 2px solid #444 !important;
-            background: rgba(15,12,41,0.8) !important;
-            font-size: 14px !important;
-            margin-bottom: 0 !important;
-            transition: all 0.3s;
+            padding: 14px 16px;
+            border-radius: 12px 0 0 12px;
+            border: 2px solid #444;
+            background: rgba(15, 12, 41, 0.85);
+            font-size: 14px;
+            color: #fff;
+            outline: none;
+            transition: all 0.3s ease;
         }
+
+        .pro-api-input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+
         .pro-api-input:focus {
-            border-color: var(--primary-color) !important;
-            box-shadow: 0 0 15px rgba(255,107,157,0.3);
+            border-color: var(--primary-color);
+            box-shadow: 0 0 15px rgba(255,107,157,0.4);
         }
+
+        /* Button */
         .pro-verify-btn {
-            padding: 14px 24px !important;
-            border-radius: 0 12px 12px 0 !important;
-            background: linear-gradient(135deg, #ff6b9d, #7c4dff) !important;
-            font-weight: 600 !important;
+            padding: 14px 24px;
+            border-radius: 0 12px 12px 0;
+            background: linear-gradient(135deg, #ff6b9d, #7c4dff);
+            font-weight: 600;
             white-space: nowrap;
-            border: none !important;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.25s ease;
         }
+
         .pro-verify-btn:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 20px rgba(255,107,157,0.4);
+            transform: scale(1.05);
+            box-shadow: 0 6px 25px rgba(255,107,157,0.5);
         }
+
+        .pro-verify-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* ========================
+         Models Grid
+        ======================== */
         .pro-models-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 8px;
-            margin-top: 12px;
+            gap: 10px;
+            margin-top: 15px;
         }
-        .pro-model-item {
-            padding: 10px 12px;
-            border-radius: 10px;
+
+        .pro-models-grid div {
+            padding: 12px;
+            border-radius: 12px;
             background: rgba(255,255,255,0.05);
-            border: 1px solid #333;
-            cursor: pointer;
-            font-size: 12px;
-            color: #aaa;
-            transition: all 0.2s;
             text-align: center;
+            font-size: 13px;
+            transition: all 0.25s ease;
+            cursor: pointer;
         }
-        .pro-model-item:hover {
-            background: rgba(255,107,157,0.2);
-            border-color: var(--primary-color);
+
+        .pro-models-grid div:hover {
+            background: linear-gradient(135deg, #ff6b9d, #7c4dff);
+            color: #fff;
+            transform: translateY(-3px);
         }
-        .pro-model-item.selected {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
+
+        /* ========================
+         Responsive
+        ======================== */
+        @media (max-width: 600px) {
+            .settings-header {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .settings-title {
+                text-align: center;
+            }
+
+            .pro-api-container {
+                flex-direction: column;
+            }
+
+            .pro-api-input {
+                border-radius: 12px;
+            }
+
+            .pro-verify-btn {
+                border-radius: 12px;
+            }
         }
         
         .modal-content .section-title { color: #ff6b9d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-align: right; }
