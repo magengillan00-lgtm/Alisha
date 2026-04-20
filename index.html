@@ -320,6 +320,112 @@
             scrollbar-color: var(--primary-color) transparent;
         }
         .modal-content h2 { color: white; margin-bottom: 18px; font-weight: 700; font-size: 20px; }
+        
+        /* Settings Header with Avatar */
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,107,157,0.3);
+        }
+        .settings-avatar {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 3px solid var(--primary-color);
+            box-shadow: 0 0 20px rgba(255,107,157,0.5);
+            object-fit: cover;
+        }
+        .settings-title {
+            text-align: right;
+        }
+        .settings-title h2 {
+            margin-bottom: 5px !important;
+            font-size: 22px !important;
+        }
+        .settings-title span {
+            color: #ff6b9d;
+            font-size: 12px;
+        }
+        
+        /* Pro Mode Styling */
+        .pro-mode-section {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(255,107,157,0.1) 0%, rgba(124,77,255,0.1) 100%);
+            border: 1px solid rgba(255,107,157,0.2);
+        }
+        .pro-mode-section .section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pro-mode-section .section-title::before {
+            content: '🔐';
+        }
+        .pro-api-container {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+            margin-top: 12px;
+        }
+        .pro-api-input {
+            flex: 1;
+            padding: 14px 16px !important;
+            border-radius: 12px 0 0 12px !important;
+            border: 2px solid #444 !important;
+            background: rgba(15,12,41,0.8) !important;
+            font-size: 14px !important;
+            margin-bottom: 0 !important;
+            transition: all 0.3s;
+        }
+        .pro-api-input:focus {
+            border-color: var(--primary-color) !important;
+            box-shadow: 0 0 15px rgba(255,107,157,0.3);
+        }
+        .pro-verify-btn {
+            padding: 14px 24px !important;
+            border-radius: 0 12px 12px 0 !important;
+            background: linear-gradient(135deg, #ff6b9d, #7c4dff) !important;
+            font-weight: 600 !important;
+            white-space: nowrap;
+            border: none !important;
+        }
+        .pro-verify-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(255,107,157,0.4);
+        }
+        .pro-models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .pro-model-item {
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #333;
+            cursor: pointer;
+            font-size: 12px;
+            color: #aaa;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .pro-model-item:hover {
+            background: rgba(255,107,157,0.2);
+            border-color: var(--primary-color);
+        }
+        .pro-model-item.selected {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
         .modal-content .section-title { color: #ff6b9d; font-size: 13px; font-weight: 600; margin-bottom: 8px; text-align: right; }
         .modal-content input, .modal-content select {
             width: 100%;
@@ -505,7 +611,13 @@
     <!-- ── Settings Modal ── -->
     <div id="settings-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <h2>⚙️ الإعدادات</h2>
+            <div class="settings-header">
+                <img src="./alicia_avatar.png" alt="Alisha" class="settings-avatar" onerror="this.style.display='none'">
+                <div class="settings-title">
+                    <h2>⚙️ الإعدادات</h2>
+                    <span>تخصيص تجربة أليشيا</span>
+                </div>
+            </div>
 
             <p class="section-title">⚡ مزود الذكاء الاصطناعي</p>
             <div class="provider-cards" id="provider-cards">
@@ -567,16 +679,15 @@
                 </div>
             </div>
 
-            <div class="pro-mode-section" style="margin-top:20px;padding-top:15px;border-top:1px solid rgba(255,255,255,0.1);">
-                <p class="section-title">🔧 الوضع الاحترافي</p>
+            <div class="pro-mode-section">
+                <p class="section-title">الوضع الاحترافي</p>
                 <p style="color:#888;font-size:12px;margin-bottom:10px;">أضف مفتاح API خاص لجلب الموديلات الحقيقية</p>
-                <div style="display:flex;gap:8px;">
-                    <input type="password" id="pro-api-key" placeholder="أدخل مفتاح API" 
-                        style="flex:1;padding:10px;border-radius:8px;border:1px solid #444;background:rgba(255,255,255,0.05);color:white;font-size:13px;" />
-                    <button id="pro-verify-btn" style="padding:10px 16px;border-radius:8px;border:none;background:linear-gradient(135deg,#ff6b9d,#7c4dff);color:white;font-size:12px;cursor:pointer;">تحقق</button>
+                <div class="pro-api-container">
+                    <input type="password" id="pro-api-key" class="pro-api-input" placeholder="أدخل مفتاح API..." />
+                    <button id="pro-verify-btn" class="pro-verify-btn">تحقق</button>
                 </div>
-                <div id="pro-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:5px;"></div>
-                <div id="pro-models-container" style="margin-top:10px;max-height:150px;overflow-y:auto;"></div>
+                <div id="pro-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:8px;"></div>
+                <div id="pro-models-container" class="pro-models-grid"></div>
             </div>
 
             <button id="s-save-btn">💾 حفظ</button>
