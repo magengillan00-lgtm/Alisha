@@ -1351,27 +1351,8 @@
 
         function showReply(text) { /* صوت فقط */ }
 
-        // اكتشاف لغة النص تلقائياً
-        function detectLanguage(text) {
-            const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-            const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/;
-            
-            if (japaneseRegex.test(text)) return 'ja';
-            if (arabicRegex.test(text)) return 'ar';
-            return 'en'; // الافتراضي إنجليزية
-        }
-
         async function processUserInput(text) {
             if (!text.trim()) return;
-            
-            // اكتشاف لغة النص تلقائياً والاستجابة بنفس اللغة
-            const detectedLang = detectLanguage(text);
-            if (detectedLang && detectedLang !== CURRENT_LANGUAGE) {
-                CURRENT_LANGUAGE = detectedLang;
-                localStorage.setItem('ALISHA_LANGUAGE', CURRENT_LANGUAGE);
-                // تحديث قائمة الأصوات حسب اللغة الجديدة
-                renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
-            }
             
             // أضف رسالة المستخدم للمحادثة
             conversationHistory.push({ role: 'user', content: text });
