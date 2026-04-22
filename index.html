@@ -637,8 +637,28 @@
             <h2>🌸 Alisha AI</h2>
             <p style="color:#88ff99;font-size:13px;margin-bottom:20px;">⚡ مدعومة بـ KiloClaw — لا تحتاج مفتاح</p>
 
+            <!-- Step dots -->
+            <div class="step-dots" style="display:flex;justify-content:center;gap:8px;margin-bottom:20px;">
+                <div class="step-dot active" id="dot-1" style="width:10px;height:10px;border-radius:50%;background:#444;"></div>
+                <div class="step-dot" id="dot-2" style="width:10px;height:10px;border-radius:50%;background:#444;"></div>
+            </div>
+
+            <!-- Step 1: API Key -->
+            <div id="step-1">
+                <p class="section-title">🔑 مفتاح API</p>
+                <input type="text" id="api-key-input-new" class="pro-api-input" style="width:100%;padding:14px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid #333;color:white;font-size:14px;margin-bottom:15px;text-align:center;" placeholder="أدخل مفتاح API (اختياري)" />
+                <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;font-weight bold;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
+                <p class="error-msg" id="key-error" style="color:#ff4444;font-size:12px;margin-top:10px;display:none;"></p>
+                <p style="color:#666;font-size:11px;margin-top:15px;line-height:1.6;">
+                    💡 يمكنك تخطي هذه الخطوة والاستمرار بـ KiloClaw المجاني<br>
+                    أو أدخل مفتاح Google, Groq, HuggingFace للحصول على موديلات أخرى
+                </p>
+                <!-- Skip button -->
+                <button id="skip-key-btn" style="width:100%;padding:12px;border-radius:12px;background:transparent;border:1px solid #444;color:#888;font-size:14px;cursor:pointer;margin-top:10px;">تخطي - استخدام KiloClaw المجاني</button>
+            </div>
+
             <!-- Step 2: Model + Language + Avatar -->
-            <div id="step-2">
+            <div id="step-2" style="display:none;">
                 <p class="section-title">🤖 اختر الموديل</p>
                 <div id="model-list-container">
                     <div style="color:#aaa;font-size:13px;padding:20px;">جاري جلب الموديلات المتاحة...</div>
@@ -1075,6 +1095,67 @@
             verifyKeyBtn.textContent = 'التحقق من المفتاح →';
             verifyKeyBtn.disabled = false;
         });
+
+        // ── New Step 1: API Key Verification ─────────────────
+        const newApiKeyInput = document.getElementById('api-key-input-new');
+        const newVerifyKeyBtn = document.getElementById('verify-key-btn-new');
+        const newKeyError = document.getElementById('key-error');
+        const skipKeyBtn = document.getElementById('skip-key-btn');
+        
+        if (newVerifyKeyBtn && skipKeyBtn) {
+            // Skip button - use KiloClaw free
+            skipKeyBtn.addEventListener('click', () => {
+                document.getElementById('step-1').style.display = 'none';
+                document.getElementById('step-2').style.display = 'block';
+                document.getElementById('dot-1').style.background = '#4caf50';
+                document.getElementById('dot-2').style.background = 'var(--primary-color)';
+                // Load default KiloClaw model
+                renderModelList([{ id: 'kiloclaw', name: '🦊 KiloClaw (مجاني)', provider: 'kiloclaw' }]);
+                setTimeout(() => {
+                    renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+                }, 500);
+            });
+            
+            // Verify API key button
+            newVerifyKeyBtn.addEventListener('click', async () => {
+                const key = newApiKeyInput.value.trim();
+                
+                if (!key) {
+                    // Empty - use KiloClaw
+                    skipKeyBtn.click();
+                    return;
+                }
+                
+                newVerifyKeyBtn.textContent = '⏳ جاري التحقق...';
+                newVerifyKeyBtn.disabled = true;
+                newKeyError.style.display = 'none';
+                
+                try {
+                    const models = await fetchModels(key);
+                    API_KEY = key;
+                    AI_PROVIDER = detectProvider(key);
+                    localStorage.setItem('ALISHA_API_KEY', key);
+                    localStorage.setItem('ALISHA_PROVIDER', AI_PROVIDER);
+                    
+                    // Go to step 2
+                    document.getElementById('step-1').style.display = 'none';
+                    document.getElementById('step-2').style.display = 'block';
+                    document.getElementById('dot-1').style.background = '#4caf50';
+                    document.getElementById('dot-2').style.background = 'var(--primary-color)';
+                    
+                    renderModelList(models);
+                    setTimeout(() => {
+                        renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+                    }, 500);
+                } catch (e) {
+                    newKeyError.textContent = e.message;
+                    newKeyError.style.display = 'block';
+                }
+                
+                newVerifyKeyBtn.textContent = 'التحقق من المفتاح →';
+                newVerifyKeyBtn.disabled = false;
+            });
+        }
 
         // Update voice list when language changes in setup
         setupLanguage.addEventListener('change', () => {
@@ -1718,11 +1799,17 @@
                 renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             }, 800);
 
+            // إذا第一届 تشغيل - اعرض step-1
+            if (!localStorage.getItem('ALISHA_SETUP_DONE')) {
+                document.getElementById('step-1').style.display = 'block';
+                document.getElementById('step-2').style.display = 'none';
+                document.getElementById('dot-1').style.background = 'var(--primary-color)';
+                document.getElementById('dot-2').style.background = '#444';
+            }
             // إذا سبق للمستخدم الاختيار، ابدأ مباشرة
-            if (localStorage.getItem('ALISHA_SETUP_DONE')) {
+            else if (localStorage.getItem('ALISHA_SETUP_DONE')) {
                 setupModal.classList.add('hidden');
                 await initAvatar();
-                // ملاحظة: صوت الترحيب يحتاج تفاعل مستخدم أولاً بسبب سياسات المتصفح
             }
         })();
 
