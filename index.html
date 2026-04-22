@@ -708,7 +708,21 @@
                     <div class="p-name">KiloClaw</div>
                     <div class="p-status">Backend</div>
                 </div>
+                <div class="provider-card" data-provider="huggingface">
+                    <span class="p-icon">🟣</span>
+                    <div class="p-name">HF Agents</div>
+                    <div class="p-status">AI Agents</div>
+                </div>
             </div>
+
+            <p class="section-title">🧠 الوكيل</p>
+            <select id="s-agent">
+                <option value="smolagents">🧠 Smolagents</option>
+                <option value="avatar-chat">🎭 AI Avatar Chat</option>
+                <option value="agent-ui">⚡ Agent UI</option>
+                <option value="qwen3">💬 Qwen3</option>
+                <option value="code-agent">💻 Code Agent</option>
+            </select>
 
             <p class="section-title">🤖 الموديل</p>
             <select id="s-model">
@@ -905,6 +919,7 @@
         const sCloseBtn = document.getElementById('s-close-btn');
         const sModel = document.getElementById('s-model');
         const sLanguage = document.getElementById('s-language');
+        const sAgent = document.getElementById('s-agent');
         // mic language selection removed - auto-detection enabled
         const sAvatar = document.getElementById('s-avatar');
         const sVoiceList = document.getElementById('s-voice-list');
@@ -1114,6 +1129,7 @@
             // mic language auto-detected
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
+            if (sAgent) sAgent.value = localStorage.getItem('ALISHA_AGENT') || 'smolagents';
             syncProviderCards();
             renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
@@ -1138,11 +1154,13 @@
             const newLang = sLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
+            const newAgent = sAgent?.value || 'smolagents';
             const languageChanged = newLang !== CURRENT_LANGUAGE;
             const avatarChanged = newAvatar !== CURRENT_AVATAR;
 
             if (newModel) SELECTED_MODEL = newModel;
             localStorage.setItem('ALISHA_MODEL', SELECTED_MODEL);
+            localStorage.setItem('ALISHA_AGENT', newAgent);
 
             if (languageChanged) {
                 CURRENT_LANGUAGE = newLang;
@@ -1165,6 +1183,17 @@
 
         sCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
+        const sAgent = document.getElementById('s-agent');
+        const sAgentSection = sAgent?.closest('p');
+        
+        // إظهار/إخفاء قائمة الوكيلين حسب المزود
+        function updateAgentVisibility() {
+            if (sAgentSection) {
+                sAgentSection.style.display = AI_PROVIDER === 'huggingface' ? 'block' : 'none';
+            }
+        }
+        updateAgentVisibility();
+        
         // ── Provider Cards ─────────────────────────────────────
         document.querySelectorAll('.provider-card').forEach(card => {
             card.addEventListener('click', () => {
@@ -1172,6 +1201,7 @@
                 card.classList.add('active');
                 AI_PROVIDER = card.dataset.provider;
                 localStorage.setItem('ALISHA_PROVIDER_CHOICE', AI_PROVIDER);
+                updateAgentVisibility();
                 updateStatus('مزود: ' + card.querySelector('.p-name').textContent);
                 setTimeout(() => updateStatus('Ready'), 2000);
             });
@@ -1477,15 +1507,47 @@
             return data.reply || null;
         }
 
+        // HuggingFace Agents
+        const HF_AGENTS = {
+            'smolagents':        { name: 'Smolagents',        url: 'https://huggingface.co/spaces/smolagent/SmolAgents' },
+            'avatar-chat':      { name: 'AI Avatar Chat', url: 'https://huggingface.co/spaces/agents-aura/AI-Avatar-Chat' },
+            'agent-ui':        { name: 'Agent UI',     url: 'https://huggingface.co/spaces/agents-aura/Agent-UI' },
+            'qwen3':          { name: 'Qwen3',        url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
+            'code-agent':     { name: 'Code Agent', url: 'https://huggingface.co/spaces/magengillan00-lgtm/Alisha-Code-Agent' },
+        };
+        
+        async function callHuggingFaceAgent(userText) {
+            const agent = sAgent?.value || 'smolagents';
+            const agentInfo = HF_AGENTS[agent];
+            if (!agentInfo) return null;
+            
+            const ctrl = new AbortController();
+            const tout = setTimeout(() => ctrl.abort(), 15000);
+            try {
+                const res = await fetch(agentInfo.url + '/api/predict', {
+                    method: 'POST', signal: ctrl.signal,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE })
+                });
+                clearTimeout(tout);
+                const data = await res.json();
+                return data.response || data.reply || data.output || data || null;
+            } catch (e) {
+                clearTimeout(tout);
+                throw e;
+            }
+        }
+
         async function getAIResponse(userText) {
             updateStatus('Thinking...');
             abortController = new AbortController();
 
             // ترتيب الاستدعاء حسب المزود المختار
             const order = {
-                groq:     [callGroq, callGemini, callKiloClaw],
-                gemini:   [callGemini, callGroq, callKiloClaw],
-                kiloclaw: [callKiloClaw, callGroq, callGemini],
+                groq:        [callGroq, callGemini, callKiloClaw],
+                gemini:      [callGemini, callGroq, callKiloClaw],
+                kiloclaw:   [callKiloClaw, callGroq, callGemini],
+                huggingface:[callHuggingFaceAgent, callGroq, callKiloClaw],
             };
             const funcs = order[AI_PROVIDER] || order.groq;
 
