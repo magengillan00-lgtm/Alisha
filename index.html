@@ -647,8 +647,8 @@
             <div id="step-1">
                 <p class="section-title">🔑 مفتاح API</p>
                 <input type="text" id="api-key-input-new" class="pro-api-input" style="width:100%;padding:14px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid #333;color:white;font-size:14px;margin-bottom:15px;text-align:center;" placeholder="أدخل مفتاح API (اختياري)" />
-                <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;font-weight bold;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
-                <p class="error-msg" id="key-error" style="color:#ff4444;font-size:12px;margin-top:10px;display:none;"></p>
+                <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
+                <p id="new-key-error" style="color:#ff4444;font-size:12px;margin-top:10px;display:none;"></p>
                 <p style="color:#666;font-size:11px;margin-top:15px;line-height:1.6;">
                     💡 يمكنك تخطي هذه الخطوة والاستمرار بـ KiloClaw المجاني<br>
                     أو أدخل مفتاح Google, Groq, HuggingFace للحصول على موديلات أخرى
@@ -1037,7 +1037,8 @@
                     .slice(0, 20)
                     .map(m => ({ id: m.id, name: m.id.split('/').pop().split(':')[0], tag: provider }));
             } catch (e) {
-                throw new Error('مفتاح غير صالح أو تعذّر الاتصال');
+                console.error('fetchModels error:', e);
+                throw new Error('تعذّر الاتصال بالمخدم. تأكد من صحة المفتاح.');
             }
         }
 
@@ -1099,8 +1100,10 @@
         // ── New Step 1: API Key Verification ─────────────────
         const newApiKeyInput = document.getElementById('api-key-input-new');
         const newVerifyKeyBtn = document.getElementById('verify-key-btn-new');
-        const newKeyError = document.getElementById('key-error');
+        const newKeyError = document.getElementById('new-key-error');
         const skipKeyBtn = document.getElementById('skip-key-btn');
+        
+        console.log('Debug: newVerifyKeyBtn =', newVerifyKeyBtn, 'skipKeyBtn =', skipKeyBtn);
         
         if (newVerifyKeyBtn && skipKeyBtn) {
             // Skip button - use KiloClaw free
@@ -1131,7 +1134,9 @@
                 newKeyError.style.display = 'none';
                 
                 try {
+                    console.log('Debug: Fetching models with key =', key.substring(0, 10) + '...');
                     const models = await fetchModels(key);
+                    console.log('Debug: Models received =', models);
                     API_KEY = key;
                     AI_PROVIDER = detectProvider(key);
                     localStorage.setItem('ALISHA_API_KEY', key);
@@ -1148,7 +1153,8 @@
                         renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
                     }, 500);
                 } catch (e) {
-                    newKeyError.textContent = e.message;
+                    console.error('Debug: Error =', e);
+                    newKeyError.textContent = 'خطأ: ' + e.message;
                     newKeyError.style.display = 'block';
                 }
                 
