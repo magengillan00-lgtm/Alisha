@@ -647,7 +647,7 @@
             <div id="step-1">
                 <p class="section-title">🔑 مفتاح API</p>
                 <input type="text" id="api-key-input-new" class="pro-api-input" style="width:100%;padding:14px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid #333;color:white;font-size:14px;margin-bottom:15px;text-align:center;" placeholder="أدخل مفتاح API (اختياري)" />
-                <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
+                <button id="verify-key-btn-new" onclick="verifyApiKey()" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
                 <p id="new-key-error" style="color:#ff4444;font-size:12px;margin-top:10px;display:none;"></p>
                 <p style="color:#666;font-size:11px;margin-top:15px;line-height:1.6;">
                     💡 يمكنك تخطي هذه الخطوة والاستمرار بـ KiloClaw المجاني<br>
@@ -1042,6 +1042,50 @@
             }
         }
 
+        // ── Verify API Key function (called from onclick) ─────────────────
+        async function verifyApiKey() {
+            const key = document.getElementById('api-key-input-new').value.trim();
+            const errorEl = document.getElementById('new-key-error');
+            const btn = document.getElementById('verify-key-btn-new');
+            
+            console.log('verifyApiKey called, key =', key ? key.substring(0,10)+'...' : 'empty');
+            
+            if (!key) {
+                // Go to step 2 with KiloClaw
+                document.getElementById('step-1').style.display = 'none';
+                document.getElementById('step-2').style.display = 'block';
+                renderModelList([{ id: 'kiloclaw', name: '🦊 KiloClaw (مجاني)', tag: 'مجاني' }]);
+                return;
+            }
+            
+            btn.textContent = '⏳ جاري التحقق...';
+            btn.disabled = true;
+            errorEl.style.display = 'none';
+            
+            try {
+                const models = await fetchModels(key);
+                console.log('Models fetched:', models);
+                API_KEY = key;
+                AI_PROVIDER = detectProvider(key);
+                localStorage.setItem('ALISHA_API_KEY', key);
+                localStorage.setItem('ALISHA_PROVIDER', AI_PROVIDER);
+                
+                document.getElementById('step-1').style.display = 'none';
+                document.getElementById('step-2').style.display = 'block';
+                document.getElementById('dot-1').style.background = '#4caf50';
+                document.getElementById('dot-2').style.background = 'var(--primary-color)';
+                
+                renderModelList(models);
+            } catch (e) {
+                console.error('Error:', e);
+                errorEl.textContent = 'خطأ: ' + (e.message || 'حدث خطأ');
+                errorEl.style.display = 'block';
+            }
+            
+            btn.textContent = 'التحقق من المفتاح →';
+            btn.disabled = false;
+        }
+
         function renderModelList(models) {
             if (!models.length) {
                 modelListContainer.innerHTML = '<div style="color:#aaa;font-size:13px;padding:10px;">لا توجد موديلات متاحة</div>';
@@ -1093,9 +1137,17 @@
                 keyError.textContent = e.message;
                 keyError.style.display = 'block';
             }
-            verifyKeyBtn.textContent = 'التحقق من المفتاح →';
+            verifyKeyBtn.textContent = "التحقق من المفتاح →";
             verifyKeyBtn.disabled = false;
         });
+
+        // ── Delegate old verify button to new API ─────────────────
+        verifyKeyBtn.addEventListener("click", () => newVerifyKeyBtn.click());
+            verifyKeyBtn.disabled = false;
+        });
+
+        // ── Delegate old verify button to new API ─────────────────
+        verifyKeyBtn.addEventListener('click', () => newVerifyKeyBtn.click());
 
         // ── New Step 1: API Key Verification ─────────────────
         const newApiKeyInput = document.getElementById('api-key-input-new');
