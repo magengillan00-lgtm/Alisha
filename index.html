@@ -1109,45 +1109,8 @@
             sModel.value = SELECTED_MODEL;
         }
 
-        verifyKeyBtn.addEventListener('click', async () => {
-            const key = apiKeyInput.value.trim();
-            if (!key) { keyError.textContent = 'أدخل المفتاح أولاً'; keyError.style.display = 'block'; return; }
-            verifyKeyBtn.textContent = '⏳ جاري التحقق...';
-            verifyKeyBtn.disabled = true;
-            keyError.style.display = 'none';
-            try {
-                const models = await fetchModels(key);
-                API_KEY = key;
-                API_PROVIDER = detectProvider(key);
-                localStorage.setItem('ALISHA_API_KEY', key);
-                localStorage.setItem('ALISHA_PROVIDER', API_PROVIDER);
-                // go to step 2
-                step1.classList.add('hidden');
-                step2.classList.remove('hidden');
-                document.getElementById('dot-1').classList.remove('active');
-                document.getElementById('dot-1').classList.add('done');
-                document.getElementById('dot-2').classList.add('active');
-                renderModelList(models);
-                // load voices
-                setTimeout(() => {
-                    loadVoices();
-                    renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
-                }, 500);
-            } catch (e) {
-                keyError.textContent = e.message;
-                keyError.style.display = 'block';
-            }
-            verifyKeyBtn.textContent = "التحقق من المفتاح →";
-            verifyKeyBtn.disabled = false;
         });
 
-        // ── Delegate old verify button to new API ─────────────────
-        verifyKeyBtn.addEventListener("click", () => newVerifyKeyBtn.click());
-            verifyKeyBtn.disabled = false;
-        });
-
-        // ── Delegate old verify button to new API ─────────────────
-        verifyKeyBtn.addEventListener('click', () => newVerifyKeyBtn.click());
 
         // ── New Step 1: API Key Verification ─────────────────
         const newApiKeyInput = document.getElementById('api-key-input-new');
@@ -1214,6 +1177,9 @@
                 newVerifyKeyBtn.disabled = false;
             });
         }
+
+        // Wire the old verify button (hidden dummy) to the new API
+        verifyKeyBtn.addEventListener('click', () => newVerifyKeyBtn.click());
 
         // Update voice list when language changes in setup
         setupLanguage.addEventListener('change', () => {
