@@ -1,0 +1,6 @@
+gradio>=5.0.0,<6.0.0
+huggingface_hub>=0.20.0
+fastapi
+uvicorn[standard]
+ddgs>=7.0.0
+requests

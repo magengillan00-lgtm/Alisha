@@ -615,6 +615,107 @@
         }
         .provider-card.active .p-status { color: #88ff99; opacity: 1; }
 
+        /* ── Agent Mode Section ── */
+        .agent-mode-section {
+            background: linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%);
+            border: 1px solid rgba(102,126,234,0.3);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .agent-status-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            font-size: 12px; color: #88ff99;
+        }
+        .agent-status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #88ff99;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .agent-features {
+            display: flex; flex-wrap: wrap; gap: 6px;
+        }
+        .agent-feature {
+            background: rgba(255,255,255,0.08);
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 11px; color: #ccc;
+        }
+        .agent-backend-config {
+            margin-top: 10px;
+        }
+        .agent-backend-config label {
+            font-size: 11px; color: #999; display: block; margin-bottom: 4px;
+        }
+        .agent-backend-config select, .agent-backend-config input {
+            width: 100%; padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: white; font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        /* ── Secrets Management ── */
+        .secrets-section {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .provider-key-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .provider-key-item .key-name { color: #ccc; }
+        .provider-key-item .key-status {
+            font-size: 11px; padding: 2px 8px;
+            border-radius: 6px;
+        }
+        .key-status.configured {
+            background: rgba(76,175,80,0.2); color: #88ff99;
+        }
+        .key-status.missing {
+            background: rgba(255,107,107,0.2); color: #ff6b6b;
+        }
+        .btn-check-status {
+            width: 100%; padding: 8px;
+            border-radius: 10px;
+            background: rgba(102,126,234,0.2);
+            border: 1px solid rgba(102,126,234,0.3);
+            color: #a0b4ff; cursor: pointer;
+            font-size: 12px; margin-top: 8px;
+            transition: all 0.2s;
+        }
+        .btn-check-status:hover { background: rgba(102,126,234,0.35); }
+        .secrets-instructions {
+            margin-top: 12px; padding: 10px;
+            background: rgba(0,0,0,0.15);
+            border-radius: 10px;
+            font-size: 11px; color: #999;
+        }
+        .secrets-instructions a { color: var(--primary-color); }
+        .secrets-instructions code {
+            background: rgba(255,255,255,0.08);
+            padding: 2px 6px; border-radius: 4px;
+            font-size: 10px; color: #a0b4ff;
+        }
+        .secret-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 4px 0; font-size: 11px;
+        }
+        .secret-item code { min-width: 120px; }
+
         @media (max-width: 600px) {
             #text-input { width: 180px; padding: 12px; }
             .action-btn { width: 50px; height: 50px; }
@@ -719,26 +820,53 @@
                     <div class="p-name">Gemini</div>
                     <div class="p-status">2.0 Flash</div>
                 </div>
-                <div class="provider-card" data-provider="mistral">
-                    <span class="p-icon">🟠</span>
-                    <div class="p-name">Mistral</div>
-                    <div class="p-status">Free Tier</div>
+                <div class="provider-card" data-provider="nvidia">
+                    <span class="p-icon">🟩</span>
+                    <div class="p-name">NVIDIA</div>
+                    <div class="p-status">Llama 405B</div>
                 </div>
                 <div class="provider-card" data-provider="huggingface">
-                    <span class="p-icon">🟣</span>
-                    <div class="p-name">HF Agents</div>
-                    <div class="p-status">AI Agents</div>
+                    <span class="p-icon">🌸</span>
+                    <div class="p-name">Alisha Agent</div>
+                    <div class="p-status">16 Tools</div>
                 </div>
             </div>
 
             <p class="section-title">🧠 الوكيل</p>
             <select id="s-agent">
+                <option value="alisha-agent">🌸 Alisha Agent</option>
                 <option value="smolagents">🧠 Smolagents</option>
                 <option value="avatar-chat">🎭 AI Avatar Chat</option>
                 <option value="agent-ui">⚡ Agent UI</option>
                 <option value="qwen3">💬 Qwen3</option>
-                <option value="code-agent">💻 Code Agent</option>
             </select>
+
+            <div id="agent-mode-section" class="agent-mode-section">
+                <div class="agent-status-bar">
+                    <span class="agent-status-dot"></span>
+                    <span>وضع الوكيل نشط — 16 أداة متاحة</span>
+                </div>
+                <div class="agent-features">
+                    <div class="agent-feature">🔍 بحث</div>
+                    <div class="agent-feature">💻 كود</div>
+                    <div class="agent-feature">📁 ملفات</div>
+                    <div class="agent-feature">🐙 GitHub</div>
+                    <div class="agent-feature">🧮 حساب</div>
+                    <div class="agent-feature">🌐 ترجمة</div>
+                </div>
+                <div class="agent-backend-config">
+                    <label>مزود الوكيل الخلفي:</label>
+                    <select id="agent-backend-provider">
+                        <option value="huggingface">HuggingFace (Qwen 2.5 72B)</option>
+                        <option value="nvidia">NVIDIA NIM (Llama 405B)</option>
+                        <option value="groq">Groq (Llama 3.3 70B)</option>
+                        <option value="google">Google Gemini (2.0 Flash)</option>
+                    </select>
+                    <label>عنوان الوكيل:</label>
+                    <input type="text" id="agent-backend-url" value="https://Magen01-alisha-agent.hf.space" placeholder="https://your-space.hf.space" />
+                </div>
+                <p style="color:#888;font-size:11px;margin-top:8px;">ارسل رسالة مع كلمة مهمة (ابحث، نفذ، اكتب كود) لتفعيل وضع الوكيل تلقائياً</p>
+            </div>
 
             <p class="section-title">🤖 الموديل</p>
             <select id="s-model">
@@ -790,6 +918,47 @@
                 </div>
                 <div id="pro-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:8px;"></div>
                 <div id="pro-models-container" class="pro-models-grid"></div>
+            </div>
+
+            <div class="secrets-section">
+                <p class="section-title">🔑 إدارة مفاتيح الوكيل</p>
+                <p style="color:#888;font-size:11px;margin-bottom:10px;">حالة مفاتيح API على خادم الوكيل</p>
+                <div id="provider-status-list">
+                    <div class="provider-key-item">
+                        <span class="key-name">🟡 HuggingFace <code>HF_TOKEN</code></span>
+                        <span class="key-status missing" id="key-hf">غير معروف</span>
+                    </div>
+                    <div class="provider-key-item">
+                        <span class="key-name">🟩 NVIDIA <code>NVIDIA_API_KEY</code></span>
+                        <span class="key-status missing" id="key-nvidia">غير معروف</span>
+                    </div>
+                    <div class="provider-key-item">
+                        <span class="key-name">🟢 Groq <code>GROQ_API_KEY</code></span>
+                        <span class="key-status missing" id="key-groq">غير معروف</span>
+                    </div>
+                    <div class="provider-key-item">
+                        <span class="key-name">🔵 Google <code>GOOGLE_API_KEY</code></span>
+                        <span class="key-status missing" id="key-google">غير معروف</span>
+                    </div>
+                    <div class="provider-key-item">
+                        <span class="key-name">🐙 GitHub <code>GITHUB_TOKEN</code></span>
+                        <span class="key-status missing" id="key-github">غير معروف</span>
+                    </div>
+                </div>
+                <button class="btn-check-status" id="check-provider-status">🔄 فحص حالة المزودين</button>
+                <div class="secrets-instructions">
+                    <p style="color:#ccc;margin-bottom:8px;">📋 لإضافة المفاتيح يدوياً:</p>
+                    <p>1. افتح <a href="https://huggingface.co/spaces/Magen01/Alisha-Agent/settings" target="_blank">إعدادات Space</a></p>
+                    <p>2. اذهب إلى قسم <strong style="color:#ccc;">Repository secrets</strong></p>
+                    <p>3. أضف المفاتيح التالية:</p>
+                    <div style="margin-top:8px;">
+                        <div class="secret-item"><code>HF_TOKEN</code> <span>— مفتاح HuggingFace</span></div>
+                        <div class="secret-item"><code>NVIDIA_API_KEY</code> <span>— مفتاح NVIDIA NIM</span></div>
+                        <div class="secret-item"><code>GROQ_API_KEY</code> <span>— مفتاح Groq</span></div>
+                        <div class="secret-item"><code>GOOGLE_API_KEY</code> <span>— مفتاح Google Gemini</span></div>
+                        <div class="secret-item"><code>GITHUB_TOKEN</code> <span>— مفتاح GitHub (اختياري)</span></div>
+                    </div>
+                </div>
             </div>
 
             <button id="s-save-btn">💾 حفظ</button>
@@ -995,6 +1164,7 @@
         function detectProvider(key) {
             if (key.startsWith('gsk_')) return 'groq';
             if (key.startsWith('hf_')) return 'huggingface';
+            if (key.startsWith('nvapi-')) return 'nvidia';
             if (key.startsWith('sk-or-')) return 'openrouter';
             if (key.startsWith('AIzaSy')) return 'gemini';
             if (key.startsWith('pplx-')) return 'perplexity';
@@ -1019,9 +1189,18 @@
 
             if (provider === 'gemini') {
                 return [
-                    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', tag: 'Google' },
+                    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', tag: 'Google' },
                     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tag: 'Google' },
                     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tag: 'Google' }
+                ];
+            }
+
+            if (provider === 'nvidia') {
+                return [
+                    { id: 'meta/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', tag: 'NVIDIA' },
+                    { id: 'meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', tag: 'NVIDIA' },
+                    { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Nemotron 70B', tag: 'NVIDIA' },
+                    { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', tag: 'NVIDIA' }
                 ];
             }
 
@@ -1198,7 +1377,7 @@
             // mic language auto-detected
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
-            if (sAgent) sAgent.value = localStorage.getItem('ALISHA_AGENT') || 'smolagents';
+            if (sAgent) sAgent.value = localStorage.getItem('ALISHA_AGENT') || 'alisha-agent';
             syncProviderCards();
             renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
@@ -1223,7 +1402,7 @@
             const newLang = sLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
-            const newAgent = sAgent?.value || 'smolagents';
+            const newAgent = sAgent?.value || 'alisha-agent';
             const languageChanged = newLang !== CURRENT_LANGUAGE;
             const avatarChanged = newAvatar !== CURRENT_AVATAR;
 
@@ -1257,8 +1436,57 @@
             if (agentSection) {
                 agentSection.style.display = (AI_PROVIDER === 'huggingface') ? 'block' : 'none';
             }
+            const agentModeSection = document.getElementById('agent-mode-section');
+            if (agentModeSection) {
+                const selectedAgent = sAgent?.value || 'alisha-agent';
+                agentModeSection.style.display = (AI_PROVIDER === 'huggingface' && selectedAgent === 'alisha-agent') ? 'block' : 'none';
+            }
         }
-        
+
+        if (sAgent) {
+            sAgent.addEventListener('change', updateAgentVisibility);
+        }
+
+        // Provider status check
+        document.getElementById('check-provider-status')?.addEventListener('click', async () => {
+            const btn = document.getElementById('check-provider-status');
+            const agentUrl = document.getElementById('agent-backend-url')?.value || 'https://Magen01-alisha-agent.hf.space';
+            btn.textContent = '⏳ جاري الفحص...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(agentUrl + '/api/health', { timeout: 10000 });
+                const data = await res.json();
+                const keyMap = { huggingface: 'key-hf', nvidia: 'key-nvidia', groq: 'key-groq', google: 'key-google' };
+                for (const [pid, elId] of Object.entries(keyMap)) {
+                    const el = document.getElementById(elId);
+                    if (el && data.providers) {
+                        if (data.providers[pid]) {
+                            el.textContent = 'مُفعّل';
+                            el.className = 'key-status configured';
+                        } else {
+                            el.textContent = 'غير مُعد';
+                            el.className = 'key-status missing';
+                        }
+                    }
+                }
+                const ghEl = document.getElementById('key-github');
+                if (ghEl && data.github_configured !== undefined) {
+                    if (data.github_configured) {
+                        ghEl.textContent = 'مُفعّل';
+                        ghEl.className = 'key-status configured';
+                    } else {
+                        ghEl.textContent = 'غير مُعد';
+                        ghEl.className = 'key-status missing';
+                    }
+                }
+                btn.textContent = '🔄 فحص حالة المزودين';
+            } catch (e) {
+                btn.textContent = '❌ فشل الاتصال';
+                setTimeout(() => { btn.textContent = '🔄 فحص حالة المزودين'; }, 3000);
+            }
+            btn.disabled = false;
+        });
+
         // ── Provider Cards ─────────────────────────────────────
         document.querySelectorAll('.provider-card').forEach(card => {
             card.addEventListener('click', () => {
@@ -1307,6 +1535,19 @@
                     if (!res.ok) throw new Error('مفتاح غير صالح');
                     const data = await res.json();
                     models = (data.data || data.models || []).slice(0, 15).map(m => ({ id: m.id, name: m.name || m.id, tag: 'OR' }));
+                } else if (provider === 'nvidia') {
+                    models = [
+                        { id: 'meta/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', tag: 'NVIDIA' },
+                        { id: 'meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', tag: 'NVIDIA' },
+                        { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Nemotron 70B', tag: 'NVIDIA' },
+                        { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', tag: 'NVIDIA' }
+                    ];
+                } else if (provider === 'gemini') {
+                    models = [
+                        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', tag: 'Google' },
+                        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tag: 'Google' },
+                        { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tag: 'Google' }
+                    ];
                 } else {
                     // HF - fixed list
                     models = [
@@ -1566,6 +1807,7 @@
         }
 
         async function callGroq(userText) { return callGenericOpenAI(userText, 'https://api.groq.com/openai/v1', 'groq'); }
+        async function callNvidia(userText) { return callGenericOpenAI(userText, 'https://integrate.api.nvidia.com/v1', 'nvidia'); }
         async function callMistral(userText) { return callGenericOpenAI(userText, 'https://api.mistral.ai/v1', 'mistral'); }
         async function callOpenRouter(userText) { return callGenericOpenAI(userText, 'https://openrouter.ai/api/v1', 'openrouter'); }
         async function callPerplexity(userText) { return callGenericOpenAI(userText, 'https://api.perplexity.ai', 'perplexity'); }
@@ -1596,30 +1838,81 @@
 
         // HuggingFace Agents
         const HF_AGENTS = {
-            'smolagents':        { name: 'Smolagents',        url: 'https://huggingface.co/spaces/smolagent/SmolAgents' },
-            'avatar-chat':      { name: 'AI Avatar Chat', url: 'https://huggingface.co/spaces/agents-aura/AI-Avatar-Chat' },
-            'agent-ui':        { name: 'Agent UI',     url: 'https://huggingface.co/spaces/agents-aura/Agent-UI' },
-            'qwen3':          { name: 'Qwen3',        url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
-            'code-agent':     { name: 'Code Agent', url: 'https://huggingface.co/spaces/magengillan00-lgtm/Alisha-Code-Agent' },
+            'alisha-agent':   { name: 'Alisha Agent',   url: 'https://Magen01-alisha-agent.hf.space' },
+            'smolagents':     { name: 'Smolagents',      url: 'https://huggingface.co/spaces/smolagent/SmolAgents' },
+            'avatar-chat':    { name: 'AI Avatar Chat',  url: 'https://huggingface.co/spaces/agents-aura/AI-Avatar-Chat' },
+            'agent-ui':       { name: 'Agent UI',        url: 'https://huggingface.co/spaces/agents-aura/Agent-UI' },
+            'qwen3':          { name: 'Qwen3',           url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
         };
-        
+
+        // Task keywords that trigger agent mode
+        const TASK_KEYWORDS_AR = ['ابحث', 'نفذ', 'اعمل', 'عدل', 'أنشئ', 'احذف', 'اكتب كود', 'شغل', 'حلل', 'قم ب', 'ساعدني في', 'افحص', 'اقرأ', 'حمل', 'احسب', 'ترجم', 'افعل'];
+        const TASK_KEYWORDS_EN = ['search', 'execute', 'create', 'delete', 'write code', 'run', 'analyze', 'build', 'fix', 'modify', 'find', 'list files', 'fetch', 'calculate', 'shell', 'read file', 'translate'];
+
+        function isTaskMessage(text) {
+            const lower = text.toLowerCase();
+            return TASK_KEYWORDS_AR.some(k => text.includes(k)) || TASK_KEYWORDS_EN.some(k => lower.includes(k)) || lower.includes('github.com');
+        }
+
+        // Map frontend provider names to backend provider names
+        function mapProviderToBackend(frontendProvider) {
+            const mapping = {
+                'huggingface': 'huggingface',
+                'groq': 'groq',
+                'gemini': 'google',
+                'nvidia': 'nvidia',
+            };
+            return mapping[frontendProvider] || 'huggingface';
+        }
+
         async function callHuggingFaceAgent(userText) {
-            const agent = sAgent?.value || 'smolagents';
+            const agent = sAgent?.value || 'alisha-agent';
             const agentInfo = HF_AGENTS[agent];
             if (!agentInfo) return null;
-            const endpoint = (agentInfo.api || agentInfo.url) + '/api/predict';
+
+            // Use custom backend URL if configured
+            let agentUrl = agentInfo.api || agentInfo.url;
+            if (agent === 'alisha-agent') {
+                const customUrl = document.getElementById('agent-backend-url')?.value;
+                if (customUrl) agentUrl = customUrl;
+            }
+
+            const useAgentMode = isTaskMessage(userText) && agent === 'alisha-agent';
+            const endpoint = useAgentMode ? '/api/agent' : '/api/predict';
+            const timeout = useAgentMode ? 120000 : 30000;
+
+            // Get backend provider from agent settings or frontend provider
+            const agentBackendProvider = document.getElementById('agent-backend-provider')?.value;
+            const backendProvider = (agent === 'alisha-agent' && agentBackendProvider) ? agentBackendProvider : mapProviderToBackend(AI_PROVIDER);
 
             const ctrl = new AbortController();
-            const tout = setTimeout(() => ctrl.abort(), 15000);
+            const tout = setTimeout(() => ctrl.abort(), timeout);
             try {
-                const res = await fetch(endpoint, {
+                const body = useAgentMode
+                    ? { task: userText, language: CURRENT_LANGUAGE, max_steps: 10, provider: backendProvider, model: null }
+                    : { message: userText, language: CURRENT_LANGUAGE, provider: backendProvider, model: null };
+
+                if (useAgentMode) updateStatus('🤖 الوكيل يعمل...');
+
+                const res = await fetch(agentUrl + endpoint, {
                     method: 'POST', signal: ctrl.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: [userText, CURRENT_LANGUAGE] })
+                    body: JSON.stringify(body)
                 });
                 clearTimeout(tout);
                 if (!res.ok) { console.warn('hf agent HTTP ' + res.status); return null; }
                 const data = await res.json();
+
+                if (useAgentMode && data.steps) {
+                    let reply = data.final_answer || '';
+                    if (data.steps.length > 1) {
+                        const stepsInfo = data.steps.map(s =>
+                            `[${s.step}] ${s.action}: ${(s.result || '').substring(0, 100)}`
+                        ).join('\n');
+                        reply = reply + '\n\n📋 Steps:\n' + stepsInfo;
+                    }
+                    return reply;
+                }
                 // Gradio responses shape: { data: [reply, ...] } — accept multiple shapes
                 if (Array.isArray(data?.data) && data.data.length) return String(data.data[0]);
                 return data.response || data.reply || data.output || null;
@@ -1637,6 +1930,7 @@
             const providers = {
                 groq: callGroq,
                 gemini: callGemini,
+                nvidia: callNvidia,
                 mistral: callMistral,
                 openrouter: callOpenRouter,
                 perplexity: callPerplexity,
