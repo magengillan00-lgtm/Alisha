@@ -1308,7 +1308,7 @@
                     });
                     if (!res.ok) throw new Error('مفتاح غير صالح');
                     const data = await res.json();
-                    models = (data.models || []).slice(0, 15).map(m => ({ id: m.id, name: m.name || m.id, tag: 'OR' }));
+                    models = (data.data || data.models || []).slice(0, 15).map(m => ({ id: m.id, name: m.name || m.id, tag: 'OR' }));
                 } else {
                     // HF - fixed list
                     models = [
@@ -1784,11 +1784,6 @@
             setTimeout(() => {
                 renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             }, 800);
-            // إذا سبق للمستخدم الاختيار، ابدأ مباشرة
-            else if (localStorage.getItem('ALISHA_SETUP_DONE')) {
-                setupModal.classList.add('hidden');
-                await initAvatar();
-            }
         })();
 
     })();
