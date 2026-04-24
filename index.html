@@ -572,6 +572,11 @@
         }
         .model-item:hover, .model-item.selected { background: var(--primary-color); color: white; border-color: var(--primary-color); }
         .model-item .model-tag { font-size: 10px; opacity: 0.7; padding: 2px 6px; border-radius: 6px; background: rgba(255,255,255,0.1); }
+        .model-status { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 6px; flex-shrink: 0; }
+        .model-status.checking { background: #ffc107; animation: pulse 1s infinite; }
+        .model-status.online { background: #4caf50; box-shadow: 0 0 6px rgba(76,175,80,0.6); }
+        .model-status.offline { background: #f44336; box-shadow: 0 0 6px rgba(244,67,54,0.4); }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
         /* Background selector */
         .bg-options { display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
@@ -733,11 +738,11 @@
 
             <p class="section-title">🧠 الوكيل</p>
             <select id="s-agent">
+                <option value="alisha-agent">🌸 Alisha Agent</option>
                 <option value="smolagents">🧠 Smolagents</option>
                 <option value="avatar-chat">🎭 AI Avatar Chat</option>
                 <option value="agent-ui">⚡ Agent UI</option>
                 <option value="qwen3">💬 Qwen3</option>
-                <option value="code-agent">💻 Code Agent</option>
             </select>
 
             <p class="section-title">🤖 الموديل</p>
@@ -1063,14 +1068,35 @@
             }
         }
 
+        async function checkModelStatus(modelId, key, provider) {
+            try {
+                const endpoints = {
+                    groq: 'https://api.groq.com/openai/v1/chat/completions',
+                    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+                    mistral: 'https://api.mistral.ai/v1/chat/completions',
+                    perplexity: 'https://api.perplexity.ai/chat/completions'
+                };
+                const url = endpoints[provider];
+                if (!url) return 'online';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 })
+                });
+                return res.ok ? 'online' : 'offline';
+            } catch (e) {
+                return 'offline';
+            }
+        }
+
         function renderModelList(models) {
             if (!models.length) {
                 modelListContainer.innerHTML = '<div style="color:#aaa;font-size:13px;padding:10px;">لا توجد موديلات متاحة</div>';
                 return;
             }
-            modelListContainer.innerHTML = models.map(m =>
+            modelListContainer.innerHTML = models.map((m, i) =>
                 `<div class="model-item ${m.id === SELECTED_MODEL ? 'selected' : ''}" data-id="${m.id}">
-                    <span>${m.name}</span>
+                    <span><span class="model-status checking" data-status-idx="${i}"></span> ${m.name}</span>
                     <span class="model-tag">${m.tag}</span>
                 </div>`
             ).join('');
@@ -1081,9 +1107,17 @@
                     SELECTED_MODEL = el.dataset.id;
                 });
             });
-            // also fill settings modal model select
             sModel.innerHTML = models.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
             sModel.value = SELECTED_MODEL;
+
+            const key = localStorage.getItem('ALISHA_API_KEY');
+            const provider = detectProvider(key || '');
+            models.forEach((m, i) => {
+                checkModelStatus(m.id, key, provider).then(status => {
+                    const dot = modelListContainer.querySelector(`[data-status-idx="${i}"]`);
+                    if (dot) { dot.classList.remove('checking'); dot.classList.add(status); }
+                });
+            });
         }
 
 
@@ -1574,15 +1608,15 @@
 
         // HuggingFace Agents
         const HF_AGENTS = {
-            'smolagents':        { name: 'Smolagents',        url: 'https://huggingface.co/spaces/smolagent/SmolAgents' },
-            'avatar-chat':      { name: 'AI Avatar Chat', url: 'https://huggingface.co/spaces/agents-aura/AI-Avatar-Chat' },
-            'agent-ui':        { name: 'Agent UI',     url: 'https://huggingface.co/spaces/agents-aura/Agent-UI' },
-            'qwen3':          { name: 'Qwen3',        url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
-            'code-agent':     { name: 'Code Agent', url: 'https://huggingface.co/spaces/magengillan00-lgtm/Alisha-Code-Agent' },
+            'alisha-agent':   { name: 'Alisha Agent',   url: 'https://Magen01-alisha-agent.hf.space' },
+            'smolagents':     { name: 'Smolagents',      url: 'https://huggingface.co/spaces/smolagent/SmolAgents' },
+            'avatar-chat':    { name: 'AI Avatar Chat',  url: 'https://huggingface.co/spaces/agents-aura/AI-Avatar-Chat' },
+            'agent-ui':       { name: 'Agent UI',        url: 'https://huggingface.co/spaces/agents-aura/Agent-UI' },
+            'qwen3':          { name: 'Qwen3',           url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
         };
         
         async function callHuggingFaceAgent(userText) {
-            const agent = sAgent?.value || 'smolagents';
+            const agent = sAgent?.value || 'alisha-agent';
             const agentInfo = HF_AGENTS[agent];
             if (!agentInfo) return null;
             
