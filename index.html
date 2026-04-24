@@ -631,11 +631,11 @@
     <input type="hidden" id="api-key-input" />
     <button id="verify-key-btn" style="display:none"></button>
     <span id="key-error" style="display:none"></span>
-    <div id="step-1" style="display:none"></div>
+    
     <div id="setup-modal" class="modal-overlay">
         <div class="modal-content">
             <h2>🌸 Alisha AI</h2>
-            <p style="color:#88ff99;font-size:13px;margin-bottom:20px;">⚡ مدعومة بـ KiloClaw — لا تحتاج مفتاح</p>
+            <p style="color:#ff6b9d;font-size:13px;margin-bottom:20px;">⚡ تجربة ذكاء اصطناعي تفاعلية متطورة</p>
 
             <!-- Step dots -->
             <div class="step-dots" style="display:flex;justify-content:center;gap:8px;margin-bottom:20px;">
@@ -645,16 +645,13 @@
 
             <!-- Step 1: API Key -->
             <div id="step-1">
-                <p class="section-title">🔑 مفتاح API</p>
-                <input type="text" id="api-key-input-new" class="pro-api-input" style="width:100%;padding:14px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid #333;color:white;font-size:14px;margin-bottom:15px;text-align:center;" placeholder="أدخل مفتاح API (اختياري)" />
-                <button id="verify-key-btn-new" onclick="verifyApiKey()" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
-                <p id="new-key-error" style="color:#ff4444;font-size:12px;margin-top:10px;display:none;"></p>
-                <p style="color:#666;font-size:11px;margin-top:15px;line-height:1.6;">
-                    💡 يمكنك تخطي هذه الخطوة والاستمرار بـ KiloClaw المجاني<br>
-                    أو أدخل مفتاح Google, Groq, HuggingFace للحصول على موديلات أخرى
-                </p>
-                <!-- Skip button -->
-                <button id="skip-key-btn" style="width:100%;padding:12px;border-radius:12px;background:transparent;border:1px solid #444;color:#888;font-size:14px;cursor:pointer;margin-top:10px;">تخطي - استخدام KiloClaw المجاني</button>
+                <p class="section-title">🔑 مفتاح API المطلوب</p>
+                <p style="font-size:11px;color:#aaa;margin-bottom:15px;">ادعمي أليشيا بمفتاح من (Groq, Gemini, OpenRouter, Mistral, HuggingFace)</p>
+                <input type="password" id="api-key-input-new" class="pro-api-input" style="width:100%;padding:14px;border-radius:10px;background:rgba(255,255,255,0.1);border:1px solid #333;color:white;font-size:14px;margin-bottom:15px;text-align:center;" placeholder="أدخل مفتاح API هنا..." />
+                <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
+                <div id="new-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:10px;text-align:center;"></div>
+                <!-- Hidden Skip button to maintain JS compatibility -->
+                <button id="skip-key-btn" style="display:none;"></button>
             </div>
 
             <!-- Step 2: Model + Language + Avatar -->
@@ -723,10 +720,10 @@
                     <div class="p-name">Gemini</div>
                     <div class="p-status">2.0 Flash</div>
                 </div>
-                <div class="provider-card" data-provider="kiloclaw">
-                    <span class="p-icon">🤖</span>
-                    <div class="p-name">KiloClaw</div>
-                    <div class="p-status">Backend</div>
+                <div class="provider-card" data-provider="mistral">
+                    <span class="p-icon">🟠</span>
+                    <div class="p-name">Mistral</div>
+                    <div class="p-status">Free Tier</div>
                 </div>
                 <div class="provider-card" data-provider="huggingface">
                     <span class="p-icon">🟣</span>
@@ -1002,43 +999,68 @@
             if (key.startsWith('gsk_')) return 'groq';
             if (key.startsWith('hf_')) return 'huggingface';
             if (key.startsWith('sk-or-')) return 'openrouter';
+            if (key.startsWith('AIzaSy')) return 'gemini';
+            if (key.startsWith('pplx-')) return 'perplexity';
+            if (key.includes('-')) {
+                if (key.length > 30) return 'mistral'; // heuristic
+            }
             return 'groq';
         }
 
         async function fetchModels(key) {
             const provider = detectProvider(key);
-            const endpoints = {
-                groq: { url: 'https://api.groq.com/openai/v1/models', header: `Bearer ${key}` },
-                openrouter: { url: 'https://openrouter.ai/api/v1/models', header: `Bearer ${key}` },
-                huggingface: { url: null }
-            };
+            console.log('Detected provider:', provider);
 
             if (provider === 'huggingface') {
-                // HF لا تدعم قائمة موديلات — نعرض موديلات ثابتة
                 return [
-                    { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B', tag: 'قوي' },
-                    { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen 2.5 7B', tag: 'سريع' },
-                    { id: 'meta-llama/Llama-3.2-3B-Instruct', name: 'Llama 3.2 3B', tag: 'خفيف' }
+                    { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B', tag: 'HF' },
+                    { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen 2.5 7B', tag: 'HF' },
+                    { id: 'meta-llama/Llama-3.2-3B-Instruct', name: 'Llama 3.2 3B', tag: 'HF' },
+                    { id: 'mistralai/Mistral-7B-Instruct-v0.3', name: 'Mistral 7B', tag: 'HF' }
                 ];
             }
 
+            if (provider === 'gemini') {
+                return [
+                    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', tag: 'Google' },
+                    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tag: 'Google' },
+                    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tag: 'Google' }
+                ];
+            }
+
+            const endpoints = {
+                groq: { url: 'https://api.groq.com/openai/v1/models', header: `Bearer ${key}` },
+                openrouter: { url: 'https://openrouter.ai/api/v1/models', header: `Bearer ${key}` },
+                mistral: { url: 'https://api.mistral.ai/v1/models', header: `Bearer ${key}` },
+                perplexity: { url: 'https://api.perplexity.ai/models', header: `Bearer ${key}` }
+            };
+
             try {
                 const ep = endpoints[provider];
+                if (!ep) throw new Error('Provider not supported for auto-fetch');
+                
                 const res = await fetch(ep.url, { headers: { 'Authorization': ep.header } });
-                if (!res.ok) throw new Error('invalid key');
+                if (!res.ok) throw new Error('Invalid key or unauthorized');
+                
                 const data = await res.json();
-                const models = data.data || data.models || [];
+                let models = data.data || data.models || [];
+                
                 return models
                     .filter(m => {
                         const id = (m.id || '').toLowerCase();
-                        // نظهر فقط موديلات المحادثة
-                        return id.includes('instruct') || id.includes('chat') || id.includes('llama') || id.includes('gemma') || id.includes('mixtral') || id.includes('qwen');
+                        return id.includes('instruct') || id.includes('chat') || id.includes('llama') || id.includes('gemma') || id.includes('mixtral') || id.includes('qwen') || id.includes('mistral');
                     })
                     .slice(0, 20)
-                    .map(m => ({ id: m.id, name: m.id.split('/').pop().split(':')[0], tag: provider }));
+                    .map(m => ({ id: m.id, name: (m.id || '').split('/').pop().split(':')[0], tag: provider.toUpperCase() }));
             } catch (e) {
-                console.error('fetchModels error:', e);
-                throw new Error('تعذّر الاتصال بالمخدم. تأكد من صحة المفتاح.');
+                console.warn('fetchModels warning:', e);
+                // Fallback static models for common providers if fetch fails
+                if (provider === 'groq') return [
+                    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', tag: 'Groq' },
+                    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', tag: 'Groq' },
+                    { id: 'gemma2-9b-it', name: 'Gemma 2 9B', tag: 'Groq' }
+                ];
+                throw new Error('تعذّر التحقق من المفتاح. تأكد من صحته ومن اتصال الإنترنت.');
             }
         }
 
@@ -1121,18 +1143,8 @@
         console.log('Debug: newVerifyKeyBtn =', newVerifyKeyBtn, 'skipKeyBtn =', skipKeyBtn);
         
         if (newVerifyKeyBtn && skipKeyBtn) {
-            // Skip button - use KiloClaw free
-            skipKeyBtn.addEventListener('click', () => {
-                document.getElementById('step-1').style.display = 'none';
-                document.getElementById('step-2').style.display = 'block';
-                document.getElementById('dot-1').style.background = '#4caf50';
-                document.getElementById('dot-2').style.background = 'var(--primary-color)';
-                // Load default KiloClaw model
-                renderModelList([{ id: 'kiloclaw', name: '🦊 KiloClaw (مجاني)', provider: 'kiloclaw' }]);
-                setTimeout(() => {
-                    renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
-                }, 500);
-            });
+            // Skip button removed - Key required now
+            if (skipKeyBtn) skipKeyBtn.style.display = 'none';
             
             // Verify API key button
             newVerifyKeyBtn.addEventListener('click', async () => {
@@ -1288,16 +1300,12 @@
 
         sCloseBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
-        const sAgent = document.getElementById('s-agent');
-        const sAgentSection = sAgent?.closest('p');
-        
-        // إظهار/إخفاء قائمة الوكيلين حسب المزود
         function updateAgentVisibility() {
-            if (sAgentSection) {
-                sAgentSection.style.display = AI_PROVIDER === 'huggingface' ? 'block' : 'none';
+            const agentSection = document.getElementById('s-agent')?.closest('p') || document.getElementById('s-agent');
+            if (agentSection) {
+                agentSection.style.display = (AI_PROVIDER === 'huggingface') ? 'block' : 'none';
             }
         }
-        updateAgentVisibility();
         
         // ── Provider Cards ─────────────────────────────────────
         document.querySelectorAll('.provider-card').forEach(card => {
@@ -1575,55 +1583,39 @@
         // ── AI Request ────────────────────────────────────────────
         const _GK = '__GROQ_KEY__';
 
-        async function callGroq(userText) {
-            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        async function callGenericOpenAI(userText, baseUrl, providerName) {
+            const key = localStorage.getItem('ALISHA_API_KEY');
+            if (!key) return null;
+            const res = await fetch(baseUrl + '/chat/completions', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + _GK, 'Content-Type': 'application/json' },
+                headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    model: SELECTED_MODEL || 'llama-3.3-70b-versatile',
+                    model: SELECTED_MODEL || (providerName === 'groq' ? 'llama-3.3-70b-versatile' : 'mistral-large-latest'),
                     messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, ...conversationHistory, { role: 'user', content: userText }],
-                    max_tokens: 300, temperature: 0.7
+                    max_tokens: 500, temperature: 0.7
                 })
             });
             const data = await res.json();
             return data.choices?.[0]?.message?.content || null;
         }
 
-        async function callGemini(userText) {
-            // Use real Gemini API
-            const ctrl = new AbortController();
-            const tout = setTimeout(() => ctrl.abort(), 12000);
-            try {
-                const GEMINI_KEY = localStorage.getItem('ALISHA_API_KEY') || '';
-                if (!GEMINI_KEY) return null; // يحتاج مفتاح
-                
-                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_KEY, {
-                    method: 'POST', signal: ctrl.signal,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + '\n\nالمحادثة:\n' + conversationHistory.map(m => m.role + ': ' + m.content).join('\n') + '\n\nالمستخدم: ' + userText }] }]
-                    })
-                });
-                clearTimeout(tout);
-                const data = await res.json();
-                return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-            } catch (e) {
-                clearTimeout(tout);
-                throw e;
-            }
-        }
+        async function callGroq(userText) { return callGenericOpenAI(userText, 'https://api.groq.com/openai/v1', 'groq'); }
+        async function callMistral(userText) { return callGenericOpenAI(userText, 'https://api.mistral.ai/v1', 'mistral'); }
+        async function callOpenRouter(userText) { return callGenericOpenAI(userText, 'https://openrouter.ai/api/v1', 'openrouter'); }
+        async function callPerplexity(userText) { return callGenericOpenAI(userText, 'https://api.perplexity.ai', 'perplexity'); }
 
-        async function callKiloClaw(userText) {
-            const ctrl = new AbortController();
-            const tout = setTimeout(() => ctrl.abort(), 8000);
-            const res = await fetch(KILOCLAW_BACKEND + '/chat', {
-                method: 'POST', signal: ctrl.signal,
+        async function callGemini(userText) {
+            const GEMINI_KEY = localStorage.getItem('ALISHA_API_KEY');
+            if (!GEMINI_KEY) return null;
+            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + (SELECTED_MODEL || 'gemini-1.5-flash') + ':generateContent?key=' + GEMINI_KEY, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE, systemPrompt: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || ''), history: conversationHistory })
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') + '\n\nالمستخدم: ' + userText }] }]
+                })
             });
-            clearTimeout(tout);
             const data = await res.json();
-            return data.reply || null;
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
         }
 
         // HuggingFace Agents
@@ -1662,13 +1654,17 @@
             abortController = new AbortController();
 
             // ترتيب الاستدعاء حسب المزود المختار
-            const order = {
-                groq:        [callGroq, callGemini, callKiloClaw],
-                gemini:      [callGemini, callGroq, callKiloClaw],
-                kiloclaw:   [callKiloClaw, callGroq, callGemini],
-                huggingface:[callHuggingFaceAgent, callGroq, callKiloClaw],
+            const providers = {
+                groq: callGroq,
+                gemini: callGemini,
+                mistral: callMistral,
+                openrouter: callOpenRouter,
+                perplexity: callPerplexity,
+                huggingface: callHuggingFaceAgent
             };
-            const funcs = order[AI_PROVIDER] || order.groq;
+            
+            const activeFunc = providers[AI_PROVIDER] || callGroq;
+            const funcs = [activeFunc, callGroq, callGemini, callOpenRouter].filter((v, i, a) => a.indexOf(v) === i);
 
             for (const fn of funcs) {
                 try {
@@ -1811,25 +1807,29 @@
             setTimeout(loadVoices, 1000);
             applyBackground(CURRENT_BG);
 
-            // عرض step-2 مباشرة — KiloClaw يتولى الذكاء بدون مفتاح
-            step2.classList.remove('hidden');
-            renderModelList([
-                { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', tag: 'Groq ⚡' },
-                { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', tag: 'سريع' },
-                { id: 'gemma2-9b-it', name: 'Gemma 2 9B', tag: 'Google' },
-                { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', tag: 'قوي' }
-            ]);
-            setTimeout(() => {
-                renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
-            }, 800);
-
-            // إذا第一届 تشغيل - اعرض step-1
+            // On first run, show step-1 (Key)
             if (!localStorage.getItem('ALISHA_SETUP_DONE')) {
                 document.getElementById('step-1').style.display = 'block';
                 document.getElementById('step-2').style.display = 'none';
                 document.getElementById('dot-1').style.background = 'var(--primary-color)';
                 document.getElementById('dot-2').style.background = '#444';
             }
+            else {
+                // Pre-load models if key exists
+                const key = localStorage.getItem('ALISHA_API_KEY');
+                if (key) {
+                    try {
+                        const models = await fetchModels(key);
+                        renderModelList(models);
+                    } catch(e) {}
+                }
+                setupModal.classList.add('hidden');
+                await initAvatar();
+            }
+            
+            setTimeout(() => {
+                renderVoiceList('voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
+            }, 800);
             // إذا سبق للمستخدم الاختيار، ابدأ مباشرة
             else if (localStorage.getItem('ALISHA_SETUP_DONE')) {
                 setupModal.classList.add('hidden');
