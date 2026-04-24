@@ -724,6 +724,11 @@
                     <div class="p-name">Gemini</div>
                     <div class="p-status">2.0 Flash</div>
                 </div>
+                <div class="provider-card" data-provider="nvidia">
+                    <span class="p-icon">🟩</span>
+                    <div class="p-name">NVIDIA</div>
+                    <div class="p-status">Llama 405B</div>
+                </div>
                 <div class="provider-card" data-provider="mistral">
                     <span class="p-icon">🟠</span>
                     <div class="p-name">Mistral</div>
@@ -1002,6 +1007,7 @@
         function detectProvider(key) {
             if (key.startsWith('gsk_')) return 'groq';
             if (key.startsWith('hf_')) return 'huggingface';
+            if (key.startsWith('nvapi-')) return 'nvidia';
             if (key.startsWith('sk-or-')) return 'openrouter';
             if (key.startsWith('AIzaSy')) return 'gemini';
             if (key.startsWith('pplx-')) return 'perplexity';
@@ -1026,9 +1032,18 @@
 
             if (provider === 'gemini') {
                 return [
-                    { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', tag: 'Google' },
+                    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', tag: 'Google' },
                     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', tag: 'Google' },
                     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', tag: 'Google' }
+                ];
+            }
+
+            if (provider === 'nvidia') {
+                return [
+                    { id: 'meta/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', tag: 'NVIDIA' },
+                    { id: 'meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', tag: 'NVIDIA' },
+                    { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Nemotron 70B', tag: 'NVIDIA' },
+                    { id: 'deepseek-ai/deepseek-r1', name: 'DeepSeek R1', tag: 'NVIDIA' }
                 ];
             }
 
@@ -1072,6 +1087,7 @@
             try {
                 const endpoints = {
                     groq: 'https://api.groq.com/openai/v1/chat/completions',
+                    nvidia: 'https://integrate.api.nvidia.com/v1/chat/completions',
                     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
                     mistral: 'https://api.mistral.ai/v1/chat/completions',
                     perplexity: 'https://api.perplexity.ai/chat/completions'
@@ -1234,7 +1250,7 @@
             // mic language auto-detected
             sAvatar.value = CURRENT_AVATAR;
             sModel.value = SELECTED_MODEL;
-            if (sAgent) sAgent.value = localStorage.getItem('ALISHA_AGENT') || 'smolagents';
+            if (sAgent) sAgent.value = localStorage.getItem('ALISHA_AGENT') || 'alisha-agent';
             syncProviderCards();
             renderVoiceList('s-voice-list', CURRENT_LANGUAGE, SELECTED_VOICE_URI);
             document.querySelectorAll('#s-bg-options .bg-option').forEach(el => {
@@ -1259,7 +1275,7 @@
             const newLang = sLanguage.value;
             const newAvatar = sAvatar.value;
             const newModel = sModel.value;
-            const newAgent = sAgent?.value || 'smolagents';
+            const newAgent = sAgent?.value || 'alisha-agent';
             const languageChanged = newLang !== CURRENT_LANGUAGE;
             const avatarChanged = newAvatar !== CURRENT_AVATAR;
 
@@ -1588,6 +1604,7 @@
         }
 
         async function callGroq(userText) { return callGenericOpenAI(userText, 'https://api.groq.com/openai/v1', 'groq'); }
+        async function callNvidia(userText) { return callGenericOpenAI(userText, 'https://integrate.api.nvidia.com/v1', 'nvidia'); }
         async function callMistral(userText) { return callGenericOpenAI(userText, 'https://api.mistral.ai/v1', 'mistral'); }
         async function callOpenRouter(userText) { return callGenericOpenAI(userText, 'https://openrouter.ai/api/v1', 'openrouter'); }
         async function callPerplexity(userText) { return callGenericOpenAI(userText, 'https://api.perplexity.ai', 'perplexity'); }
@@ -1616,12 +1633,23 @@
         };
         
         // Task keywords that trigger agent mode
-        const TASK_KEYWORDS_AR = ['ابحث', 'نفذ', 'اعمل', 'عدل', 'أنشئ', 'احذف', 'اكتب كود', 'شغل', 'حلل', 'قم ب', 'ساعدني في'];
-        const TASK_KEYWORDS_EN = ['search', 'execute', 'create', 'delete', 'write code', 'run', 'analyze', 'build', 'fix', 'modify', 'find', 'list files'];
+        const TASK_KEYWORDS_AR = ['ابحث', 'نفذ', 'اعمل', 'عدل', 'أنشئ', 'احذف', 'اكتب كود', 'شغل', 'حلل', 'قم ب', 'ساعدني في', 'افحص', 'اقرأ', 'حمل', 'احسب', 'ترجم'];
+        const TASK_KEYWORDS_EN = ['search', 'execute', 'create', 'delete', 'write code', 'run', 'analyze', 'build', 'fix', 'modify', 'find', 'list files', 'fetch', 'calculate', 'shell', 'read file', 'translate'];
 
         function isTaskMessage(text) {
             const lower = text.toLowerCase();
-            return TASK_KEYWORDS_AR.some(k => text.includes(k)) || TASK_KEYWORDS_EN.some(k => lower.includes(k));
+            return TASK_KEYWORDS_AR.some(k => text.includes(k)) || TASK_KEYWORDS_EN.some(k => lower.includes(k)) || lower.includes('github.com');
+        }
+
+        // Map frontend provider names to backend provider names
+        function mapProviderToBackend(frontendProvider) {
+            const mapping = {
+                'huggingface': 'huggingface',
+                'groq': 'groq',
+                'gemini': 'google',
+                'nvidia': 'nvidia',
+            };
+            return mapping[frontendProvider] || 'huggingface';
         }
 
         async function callHuggingFaceAgent(userText) {
@@ -1633,12 +1661,15 @@
             const endpoint = useAgentMode ? '/api/agent' : '/api/predict';
             const timeout = useAgentMode ? 120000 : 30000;
 
+            // Pass the selected provider to the backend
+            const backendProvider = mapProviderToBackend(AI_PROVIDER);
+
             const ctrl = new AbortController();
             const tout = setTimeout(() => ctrl.abort(), timeout);
             try {
                 const body = useAgentMode
-                    ? { task: userText, language: CURRENT_LANGUAGE, max_steps: 10 }
-                    : { message: userText, language: CURRENT_LANGUAGE };
+                    ? { task: userText, language: CURRENT_LANGUAGE, max_steps: 10, provider: backendProvider, model: SELECTED_MODEL || null }
+                    : { message: userText, language: CURRENT_LANGUAGE, provider: backendProvider, model: SELECTED_MODEL || null };
 
                 if (useAgentMode) updateStatus('🤖 Agent executing...');
 
@@ -1675,6 +1706,7 @@
             const providers = {
                 groq: callGroq,
                 gemini: callGemini,
+                nvidia: callNvidia,
                 mistral: callMistral,
                 openrouter: callOpenRouter,
                 perplexity: callPerplexity,
