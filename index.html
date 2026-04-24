@@ -651,7 +651,6 @@
                 <button id="verify-key-btn-new" style="width:100%;padding:15px;border-radius:12px;background:linear-gradient(135deg,#ff6b9d,#ff8fab);border:none;color:white;font-size:16px;cursor:pointer;margin-top:10px;">التحقق من المفتاح →</button>
                 <div id="new-key-error" style="color:#ff6b6b;font-size:11px;display:none;margin-top:10px;text-align:center;"></div>
                 <!-- Hidden Skip button to maintain JS compatibility -->
-                <button id="skip-key-btn" style="display:none;"></button>
             </div>
 
             <!-- Step 2: Model + Language + Avatar -->
@@ -1064,50 +1063,6 @@
             }
         }
 
-        // ── Verify API Key function (called from onclick) ─────────────────
-        async function verifyApiKey() {
-            const key = document.getElementById('api-key-input-new').value.trim();
-            const errorEl = document.getElementById('new-key-error');
-            const btn = document.getElementById('verify-key-btn-new');
-            
-            console.log('verifyApiKey called, key =', key ? key.substring(0,10)+'...' : 'empty');
-            
-            if (!key) {
-                // Go to step 2 with KiloClaw
-                document.getElementById('step-1').style.display = 'none';
-                document.getElementById('step-2').style.display = 'block';
-                renderModelList([{ id: 'kiloclaw', name: '🦊 KiloClaw (مجاني)', tag: 'مجاني' }]);
-                return;
-            }
-            
-            btn.textContent = '⏳ جاري التحقق...';
-            btn.disabled = true;
-            errorEl.style.display = 'none';
-            
-            try {
-                const models = await fetchModels(key);
-                console.log('Models fetched:', models);
-                API_KEY = key;
-                AI_PROVIDER = detectProvider(key);
-                localStorage.setItem('ALISHA_API_KEY', key);
-                localStorage.setItem('ALISHA_PROVIDER', AI_PROVIDER);
-                
-                document.getElementById('step-1').style.display = 'none';
-                document.getElementById('step-2').style.display = 'block';
-                document.getElementById('dot-1').style.background = '#4caf50';
-                document.getElementById('dot-2').style.background = 'var(--primary-color)';
-                
-                renderModelList(models);
-            } catch (e) {
-                console.error('Error:', e);
-                errorEl.textContent = 'خطأ: ' + (e.message || 'حدث خطأ');
-                errorEl.style.display = 'block';
-            }
-            
-            btn.textContent = 'التحقق من المفتاح →';
-            btn.disabled = false;
-        }
-
         function renderModelList(models) {
             if (!models.length) {
                 modelListContainer.innerHTML = '<div style="color:#aaa;font-size:13px;padding:10px;">لا توجد موديلات متاحة</div>';
@@ -1137,21 +1092,21 @@
         const newApiKeyInput = document.getElementById('api-key-input-new');
         const newVerifyKeyBtn = document.getElementById('verify-key-btn-new');
         const newKeyError = document.getElementById('new-key-error');
-        const skipKeyBtn = document.getElementById('skip-key-btn');
         
-        console.log('Debug: newVerifyKeyBtn =', newVerifyKeyBtn, 'skipKeyBtn =', skipKeyBtn);
+        console.log('Debug: verify button =', newVerifyKeyBtn);
         
-        if (newVerifyKeyBtn && skipKeyBtn) {
+        if (newVerifyKeyBtn) {
             // Skip button removed - Key required now
-            if (skipKeyBtn) skipKeyBtn.style.display = 'none';
             
             // Verify API key button
             newVerifyKeyBtn.addEventListener('click', async () => {
                 const key = newApiKeyInput.value.trim();
                 
                 if (!key) {
-                    // Empty - use KiloClaw
-                    skipKeyBtn.click();
+                    newKeyError.textContent = 'يرجى إدخال مفتاح API';
+                    newKeyError.style.display = 'block';
+                    newVerifyKeyBtn.textContent = 'التحقق من المفتاح →';
+                    newVerifyKeyBtn.disabled = false;
                     return;
                 }
                 
