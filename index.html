@@ -1615,21 +1615,51 @@
             'qwen3':          { name: 'Qwen3',           url: 'https://huggingface.co/spaces/Qwen/Qwen3-32B-Instruct' },
         };
         
+        // Task keywords that trigger agent mode
+        const TASK_KEYWORDS_AR = ['ابحث', 'نفذ', 'اعمل', 'عدل', 'أنشئ', 'احذف', 'اكتب كود', 'شغل', 'حلل', 'قم ب', 'ساعدني في'];
+        const TASK_KEYWORDS_EN = ['search', 'execute', 'create', 'delete', 'write code', 'run', 'analyze', 'build', 'fix', 'modify', 'find', 'list files'];
+
+        function isTaskMessage(text) {
+            const lower = text.toLowerCase();
+            return TASK_KEYWORDS_AR.some(k => text.includes(k)) || TASK_KEYWORDS_EN.some(k => lower.includes(k));
+        }
+
         async function callHuggingFaceAgent(userText) {
             const agent = sAgent?.value || 'alisha-agent';
             const agentInfo = HF_AGENTS[agent];
             if (!agentInfo) return null;
-            
+
+            const useAgentMode = isTaskMessage(userText);
+            const endpoint = useAgentMode ? '/api/agent' : '/api/predict';
+            const timeout = useAgentMode ? 120000 : 30000;
+
             const ctrl = new AbortController();
-            const tout = setTimeout(() => ctrl.abort(), 15000);
+            const tout = setTimeout(() => ctrl.abort(), timeout);
             try {
-                const res = await fetch(agentInfo.url + '/api/predict', {
+                const body = useAgentMode
+                    ? { task: userText, language: CURRENT_LANGUAGE, max_steps: 10 }
+                    : { message: userText, language: CURRENT_LANGUAGE };
+
+                if (useAgentMode) updateStatus('🤖 Agent executing...');
+
+                const res = await fetch(agentInfo.url + endpoint, {
                     method: 'POST', signal: ctrl.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE })
+                    body: JSON.stringify(body)
                 });
                 clearTimeout(tout);
                 const data = await res.json();
+
+                if (useAgentMode && data.steps) {
+                    let reply = data.final_answer || '';
+                    if (data.steps.length > 1) {
+                        const stepsInfo = data.steps.map(s =>
+                            `[${s.step}] ${s.action}: ${(s.result || '').substring(0, 100)}`
+                        ).join('\n');
+                        reply = reply + '\n\n📋 Steps:\n' + stepsInfo;
+                    }
+                    return reply;
+                }
                 return data.response || data.reply || data.output || data || null;
             } catch (e) {
                 clearTimeout(tout);
