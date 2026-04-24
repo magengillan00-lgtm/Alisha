@@ -1657,7 +1657,7 @@
             const agentInfo = HF_AGENTS[agent];
             if (!agentInfo) return null;
 
-            const useAgentMode = isTaskMessage(userText);
+            const useAgentMode = isTaskMessage(userText) && agent === 'alisha-agent';
             const endpoint = useAgentMode ? '/api/agent' : '/api/predict';
             const timeout = useAgentMode ? 120000 : 30000;
 
