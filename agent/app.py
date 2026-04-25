@@ -14,6 +14,7 @@ import json
 import traceback
 import subprocess
 import datetime
+import threading
 import requests as req_lib
 
 # ── Provider Configuration ──────────────────────────────────────
@@ -425,14 +426,15 @@ def tool_translate(text: str, target_lang: str = "en") -> str:
                   "fr": "French", "es": "Spanish", "de": "German",
                   "zh": "Chinese", "ko": "Korean", "ru": "Russian"}
     lang_name = lang_names.get(target_lang, target_lang)
+    ctx = _request_context.provider, _request_context.model
     try:
         result = call_llm(
             messages=[
                 {"role": "system", "content": f"You are a translator. Translate the following text to {lang_name}. Output ONLY the translation, nothing else."},
                 {"role": "user", "content": text}
             ],
-            provider=_current_provider,
-            model=_current_model,
+            provider=ctx[0],
+            model=ctx[1],
             max_tokens=1000,
             temperature=0.1
         )
@@ -441,9 +443,10 @@ def tool_translate(text: str, target_lang: str = "en") -> str:
         return f"Translation error: {str(e)}"
 
 
-# Global state for current provider (set during requests)
-_current_provider = "huggingface"
-_current_model = None
+# Thread-local storage for per-request provider context (avoids race conditions)
+_request_context = threading.local()
+_request_context.provider = "huggingface"
+_request_context.model = None
 
 
 # ── GitHub tools ────────────────────────────────────────────────
@@ -588,9 +591,8 @@ TOOLS = {
 
 def run_agent(task: str, language: str = "ar", max_steps: int = 10,
               provider: str = "huggingface", model: str = None) -> dict:
-    global _current_provider, _current_model
-    _current_provider = provider
-    _current_model = model
+    _request_context.provider = provider
+    _request_context.model = model
 
     api_key = get_api_key(provider)
     if not api_key:
@@ -725,7 +727,8 @@ async def api_predict(request: Request):
     language = body.get("language", "ar")
     provider = body.get("provider", "huggingface")
     model = body.get("model", None)
-    result = simple_chat(message, language, provider, model)
+    loop = __import__('asyncio').get_event_loop()
+    result = await loop.run_in_executor(None, simple_chat, message, language, provider, model)
     return JSONResponse(content=result)
 
 
@@ -737,7 +740,10 @@ async def api_agent(request: Request):
     max_steps = body.get("max_steps", 10)
     provider = body.get("provider", "huggingface")
     model = body.get("model", None)
-    result = run_agent(task, language, max_steps, provider, model)
+    loop = __import__('asyncio').get_event_loop()
+    result = await loop.run_in_executor(
+        None, run_agent, task, language, max_steps, provider, model
+    )
     return JSONResponse(content=result)
 
 

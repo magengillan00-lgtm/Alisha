@@ -1453,8 +1453,11 @@
             const agentUrl = document.getElementById('agent-backend-url')?.value || 'https://Magen01-alisha-agent.hf.space';
             btn.textContent = '⏳ جاري الفحص...';
             btn.disabled = true;
+            const ctrl = new AbortController();
+            const healthTimeout = setTimeout(() => ctrl.abort(), 10000);
             try {
-                const res = await fetch(agentUrl + '/api/health', { timeout: 10000 });
+                const res = await fetch(agentUrl + '/api/health', { signal: ctrl.signal });
+                clearTimeout(healthTimeout);
                 const data = await res.json();
                 const keyMap = { huggingface: 'key-hf', nvidia: 'key-nvidia', groq: 'key-groq', google: 'key-google' };
                 for (const [pid, elId] of Object.entries(keyMap)) {
@@ -1481,6 +1484,7 @@
                 }
                 btn.textContent = '🔄 فحص حالة المزودين';
             } catch (e) {
+                clearTimeout(healthTimeout);
                 btn.textContent = '❌ فشل الاتصال';
                 setTimeout(() => { btn.textContent = '🔄 فحص حالة المزودين'; }, 3000);
             }
