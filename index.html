@@ -847,9 +847,7 @@
 
     (function() {
 
-        // ── KiloClaw Backend ──────────────────────────────────────
-        const KILOCLAW_BACKEND = 'https://fish-sleep-cooling-lectures.trycloudflare.com';
-        const HF_SPACE_API = 'https://zeedtoven-my-ai-agent.hf.space/api/predict';
+        // (removed: legacy KILOCLAW_BACKEND / HF_SPACE_API constants — they were never read)
 
         // ── State ─────────────────────────────────────────────────
         let API_KEY = localStorage.getItem('ALISHA_API_KEY') || '';
@@ -1535,22 +1533,36 @@
         }
 
         // ── AI Request ────────────────────────────────────────────
-        const _GK = '__GROQ_KEY__';
+        // (removed: legacy __GROQ_KEY__ placeholder — keys are now user-supplied)
 
         async function callGenericOpenAI(userText, baseUrl, providerName) {
             const key = localStorage.getItem('ALISHA_API_KEY');
             if (!key) return null;
-            const res = await fetch(baseUrl + '/chat/completions', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: SELECTED_MODEL || (providerName === 'groq' ? 'llama-3.3-70b-versatile' : 'mistral-large-latest'),
-                    messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, ...conversationHistory, { role: 'user', content: userText }],
-                    max_tokens: 500, temperature: 0.7
-                })
-            });
-            const data = await res.json();
-            return data.choices?.[0]?.message?.content || null;
+            const ctrl = new AbortController();
+            const tout = setTimeout(() => ctrl.abort(), 20000);
+            try {
+                const res = await fetch(baseUrl + '/chat/completions', {
+                    method: 'POST', signal: ctrl.signal,
+                    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: SELECTED_MODEL || (providerName === 'groq' ? 'llama-3.3-70b-versatile' : 'mistral-large-latest'),
+                        messages: [{ role: 'system', content: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') }, ...conversationHistory, { role: 'user', content: userText }],
+                        temperature: 0.7
+                    })
+                });
+                clearTimeout(tout);
+                if (!res.ok) {
+                    console.warn(`${providerName} HTTP ${res.status}`);
+                    return null;
+                }
+                const data = await res.json();
+                return data.choices?.[0]?.message?.content || null;
+            } catch (e) {
+                clearTimeout(tout);
+                if (e.name === 'AbortError') console.warn(`${providerName} timeout`);
+                else console.warn(`${providerName} error:`, e.message);
+                return null;
+            }
         }
 
         async function callGroq(userText) { return callGenericOpenAI(userText, 'https://api.groq.com/openai/v1', 'groq'); }
@@ -1561,15 +1573,25 @@
         async function callGemini(userText) {
             const GEMINI_KEY = localStorage.getItem('ALISHA_API_KEY');
             if (!GEMINI_KEY) return null;
-            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + (SELECTED_MODEL || 'gemini-1.5-flash') + ':generateContent?key=' + GEMINI_KEY, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') + '\n\nالمستخدم: ' + userText }] }]
-                })
-            });
-            const data = await res.json();
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            const ctrl = new AbortController();
+            const tout = setTimeout(() => ctrl.abort(), 20000);
+            try {
+                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + (SELECTED_MODEL || 'gemini-1.5-flash') + ':generateContent?key=' + GEMINI_KEY, {
+                    method: 'POST', signal: ctrl.signal,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: SYSTEM_PROMPTS[CURRENT_LANGUAGE] + (MEMORY_CONTEXT || '') + '\n\nالمستخدم: ' + userText }] }]
+                    })
+                });
+                clearTimeout(tout);
+                if (!res.ok) { console.warn('gemini HTTP ' + res.status); return null; }
+                const data = await res.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+            } catch (e) {
+                clearTimeout(tout);
+                if (e.name !== 'AbortError') console.warn('gemini error:', e.message);
+                return null;
+            }
         }
 
         // HuggingFace Agents
@@ -1585,21 +1607,26 @@
             const agent = sAgent?.value || 'smolagents';
             const agentInfo = HF_AGENTS[agent];
             if (!agentInfo) return null;
-            
+            const endpoint = (agentInfo.api || agentInfo.url) + '/api/predict';
+
             const ctrl = new AbortController();
             const tout = setTimeout(() => ctrl.abort(), 15000);
             try {
-                const res = await fetch(agentInfo.url + '/api/predict', {
+                const res = await fetch(endpoint, {
                     method: 'POST', signal: ctrl.signal,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: userText, language: CURRENT_LANGUAGE })
+                    body: JSON.stringify({ data: [userText, CURRENT_LANGUAGE] })
                 });
                 clearTimeout(tout);
+                if (!res.ok) { console.warn('hf agent HTTP ' + res.status); return null; }
                 const data = await res.json();
-                return data.response || data.reply || data.output || data || null;
+                // Gradio responses shape: { data: [reply, ...] } — accept multiple shapes
+                if (Array.isArray(data?.data) && data.data.length) return String(data.data[0]);
+                return data.response || data.reply || data.output || null;
             } catch (e) {
                 clearTimeout(tout);
-                throw e;
+                if (e.name !== 'AbortError') console.warn('hf agent error:', e.message);
+                return null;
             }
         }
 
@@ -1607,7 +1634,6 @@
             updateStatus('Thinking...');
             abortController = new AbortController();
 
-            // ترتيب الاستدعاء حسب المزود المختار
             const providers = {
                 groq: callGroq,
                 gemini: callGemini,
@@ -1616,17 +1642,25 @@
                 perplexity: callPerplexity,
                 huggingface: callHuggingFaceAgent
             };
-            
-            const activeFunc = providers[AI_PROVIDER] || callGroq;
-            const funcs = [activeFunc, callGroq, callGemini, callOpenRouter].filter((v, i, a) => a.indexOf(v) === i);
 
-            for (const fn of funcs) {
+            // Detect compatible providers based on the stored key shape
+            const key = localStorage.getItem('ALISHA_API_KEY') || '';
+            const compatible = [];
+            const detected = detectProvider(key);
+            if (detected && providers[detected]) compatible.push(providers[detected]);
+            if (providers[AI_PROVIDER] && !compatible.includes(providers[AI_PROVIDER])) {
+                compatible.push(providers[AI_PROVIDER]);
+            }
+            // huggingface agent works without key — always allow as last resort
+            if (!compatible.includes(callHuggingFaceAgent)) compatible.push(callHuggingFaceAgent);
+
+            for (const fn of compatible) {
                 try {
                     const reply = await fn(userText);
                     if (reply) return reply;
                 } catch (e) {
                     if (e.name === 'AbortError') return null;
-                    console.warn(fn.name, 'failed:', e.message);
+                    console.warn((fn.name || 'provider'), 'failed:', e.message);
                 }
             }
             return 'تعذّر الاتصال بجميع المزودين.';
@@ -1731,7 +1765,8 @@
         let recognition = null;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            // auto-detect input language
+            // align recognition language with current UI language for better accuracy
+            recognition.lang = (LANGUAGE_CONFIG[CURRENT_LANGUAGE] && LANGUAGE_CONFIG[CURRENT_LANGUAGE].lang) || 'ar-SA';
             recognition.onstart = () => micFabBtn.classList.add('recording');
             recognition.onresult = (event) => processUserInput(event.results[0][0].transcript);
             recognition.onend = () => micFabBtn.classList.remove('recording');
