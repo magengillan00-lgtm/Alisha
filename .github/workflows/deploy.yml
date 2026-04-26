@@ -1,4 +1,4 @@
-name: Deploy Alisha with Secrets
+name: Deploy Alisha to GitHub Pages
 
 on:
   push:
@@ -24,13 +24,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject API Keys
-        run: |
-          # استبدل الـ placeholders بالمفاتيح الحقيقية
-          sed -i "s|__GROQ_KEY__|${{ secrets.G }}|g" index.html
-          sed -i "s|__HF_KEY__|${{ secrets.HU }}|g" index.html
-          sed -i "s|__GEMINI_KEY__|${{ secrets.GIMINI }}|g" index.html
-          echo "✅ Keys injected"
+      # NOTE: API keys are NEVER injected into the static HTML.
+      # Each user supplies their own key in the in-app setup modal,
+      # which stores it in localStorage on their device only.
+      # This avoids leaking keys via GitHub Pages public hosting.
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
