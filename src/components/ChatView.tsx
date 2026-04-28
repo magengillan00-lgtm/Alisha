@@ -17,6 +17,7 @@ import {
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
 import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices } from '@/lib/speech';
+import { sendMessage } from '@/lib/gemini-client';
 import SettingsDialog from '@/components/SettingsDialog';
 
 const Live2DViewer = dynamic(() => import('@/components/Live2DViewer'), {
@@ -152,26 +153,12 @@ export default function ChatView() {
 
       try {
         const chatMessages = [
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
+          ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
           { role: 'user' as const, content: text.trim() },
         ];
 
-        const res = await fetch('/api/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey,
-            model: selectedModel,
-            messages: chatMessages,
-            language: responseLanguage,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || 'حدث خطأ أثناء الاتصال بـ Gemini');
-        }
+        // Call Gemini API directly from browser (bypasses server region restrictions)
+        const data = await sendMessage(apiKey, selectedModel, chatMessages, responseLanguage);
 
         const assistantMsg = {
           id: (Date.now() + 1).toString(),

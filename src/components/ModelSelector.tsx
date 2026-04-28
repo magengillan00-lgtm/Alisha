@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { listModels } from '@/lib/gemini-client';
 
 export default function ModelSelector() {
   const {
@@ -57,15 +58,8 @@ export default function ModelSelector() {
     setIsLoading(true);
     try {
       const apiKey = useAppStore.getState().apiKey;
-      const res = await fetch('/api/gemini/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        useAppStore.getState().setModels(data.models);
-      }
+      const data = await listModels(apiKey);
+      useAppStore.getState().setModels(data.models);
     } catch (e) {
       console.error(e);
     } finally {

@@ -2,44 +2,34 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Key, ArrowLeft, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Key, ArrowLeft, Loader2, Eye, EyeOff, Sparkles, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { listModels } from '@/lib/gemini-client';
 
 export default function SetupWizard() {
-  const { apiKey, setApiKey, setAppState, setError } = useAppStore();
+  const { apiKey, setApiKey, setAppState } = useAppStore();
   const [showKey, setShowKey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [error, setLocalError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleVerify = async () => {
     if (!apiKey.trim()) {
-      setLocalError('يرجى إدخال مفتاح API');
+      setError('يرجى إدخال مفتاح API');
       return;
     }
 
     setIsVerifying(true);
-    setLocalError(null);
+    setError(null);
 
     try {
-      const res = await fetch('/api/gemini/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setLocalError(data.error || 'فشل التحقق من المفتاح');
-        setIsVerifying(false);
-        return;
-      }
+      // Call Gemini API directly from browser (bypasses server region restrictions)
+      const data = await listModels(apiKey.trim());
 
       useAppStore.getState().setModels(data.models);
       setAppState('selectModel');
-      setError(null);
     } catch (err) {
-      setLocalError('خطأ في الاتصال. تحقق من الإنترنت وحاول مرة أخرى.');
+      const msg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
+      setError(msg);
     } finally {
       setIsVerifying(false);
     }
@@ -98,7 +88,7 @@ export default function SetupWizard() {
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
-                  setLocalError(null);
+                  setError(null);
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
                 placeholder="أدخل مفتاح Gemini API..."
@@ -115,16 +105,15 @@ export default function SetupWizard() {
             </div>
 
             {error && (
-              <motion.p
+              <motion.div
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-sm text-red-400 flex items-center gap-1"
+                className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl"
               >
-                <span>⚠️</span> {error}
-              </motion.p>
+                <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-red-400">{error}</p>
+              </motion.div>
             )}
-
-
 
             <button
               onClick={handleVerify}
