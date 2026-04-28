@@ -14,7 +14,7 @@ import json
 import traceback
 import subprocess
 import datetime
-import threading
+import asyncio
 import requests as req_lib
 
 # ── Provider Configuration ──────────────────────────────────────
@@ -727,8 +727,7 @@ async def api_predict(request: Request):
     language = body.get("language", "ar")
     provider = body.get("provider", "huggingface")
     model = body.get("model", None)
-    loop = __import__('asyncio').get_event_loop()
-    result = await loop.run_in_executor(None, simple_chat, message, language, provider, model)
+    result = await asyncio.to_thread(simple_chat, message, language, provider, model)
     return JSONResponse(content=result)
 
 
@@ -740,10 +739,7 @@ async def api_agent(request: Request):
     max_steps = body.get("max_steps", 10)
     provider = body.get("provider", "huggingface")
     model = body.get("model", None)
-    loop = __import__('asyncio').get_event_loop()
-    result = await loop.run_in_executor(
-        None, run_agent, task, language, max_steps, provider, model
-    )
+    result = await asyncio.to_thread(run_agent, task, language, max_steps, provider, model)
     return JSONResponse(content=result)
 
 
