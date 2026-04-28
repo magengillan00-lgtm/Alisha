@@ -124,6 +124,8 @@ export function speakText(
   if (typeof window === 'undefined') return null;
 
   const synth = window.speechSynthesis;
+
+  // Chrome bug fix: cancel then wait a tick before speaking
   synth.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
@@ -169,12 +171,116 @@ export function speakText(
   };
 
   utterance.onerror = (e) => {
-    console.error('Speech synthesis error:', e);
+    // "interrupted" or "canceled" errors are expected when we call synth.cancel()
+    const err = e as SpeechSynthesisErrorEvent;
+    if (err.error !== 'canceled' && err.error !== 'interrupted') {
+      console.warn('Speech synthesis warning:', err.error);
+    }
+    // Always call onEnd so the UI returns to idle state
     onEnd();
   };
 
-  synth.speak(utterance);
+  // Chrome bug: speechSynthesis can freeze if not resumed periodically on long text
+  // Split text into chunks if too long
+  if (text.length > 200) {
+    speakInChunks(text, lang, onEnd, onStart, rate);
+    return utterance;
+  }
+
+  // Small timeout to avoid Chrome bug where cancel + speak in same frame fails
+  setTimeout(() => {
+    synth.speak(utterance);
+  }, 50);
+
   return utterance;
+}
+
+// Speak long text in chunks to avoid Chrome freezing
+function speakInChunks(
+  text: string,
+  lang: string,
+  onEnd: () => void,
+  onStart?: () => void,
+  rate: number = 1.0
+) {
+  const synth = window.speechSynthesis;
+
+  // Split by sentences
+  const sentences = text.match(/[^.!?。！？]+[.!?。！？]+/g) || [text];
+  let currentIndex = 0;
+  let started = false;
+
+  function speakNext() {
+    if (currentIndex >= sentences.length) {
+      onEnd();
+      return;
+    }
+
+    const chunk = sentences[currentIndex].trim();
+    if (!chunk) {
+      currentIndex++;
+      speakNext();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(chunk);
+    utterance.lang = lang;
+    utterance.rate = rate;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    const voices = synth.getVoices();
+    const langCode = lang.split('-')[0];
+    const preferredVoices = VOICE_NAMES[langCode] || [];
+
+    for (const voiceName of preferredVoices) {
+      const voice = voices.find(
+        (v) =>
+          v.name.toLowerCase().includes(voiceName.toLowerCase()) ||
+          v.lang.toLowerCase().startsWith(langCode)
+      );
+      if (voice) {
+        utterance.voice = voice;
+        break;
+      }
+    }
+
+    if (!utterance.voice) {
+      const fallbackVoice = voices.find((v) =>
+        v.lang.toLowerCase().startsWith(langCode)
+      );
+      if (fallbackVoice) {
+        utterance.voice = fallbackVoice;
+      }
+    }
+
+    utterance.onstart = () => {
+      if (!started) {
+        started = true;
+        onStart?.();
+      }
+    };
+
+    utterance.onend = () => {
+      currentIndex++;
+      // Chrome bug fix: resume after pause to prevent freeze
+      synth.resume();
+      setTimeout(speakNext, 100);
+    };
+
+    utterance.onerror = (e) => {
+      const err = e as SpeechSynthesisErrorEvent;
+      if (err.error !== 'canceled' && err.error !== 'interrupted') {
+        console.warn('Speech chunk warning:', err.error);
+      }
+      currentIndex++;
+      setTimeout(speakNext, 100);
+    };
+
+    synth.speak(utterance);
+  }
+
+  setTimeout(speakNext, 50);
 }
 
 // Initialize voices (some browsers load them asynchronously)
@@ -194,4 +300,9 @@ export function initVoices(): Promise<SpeechSynthesisVoice[]> {
       resolve(synth.getVoices());
     }, 1000);
   });
+}
+
+interface SpeechSynthesisErrorEvent {
+  readonly error: string;
+  readonly message?: string;
 }
