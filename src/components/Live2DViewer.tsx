@@ -9,7 +9,6 @@ interface Live2DViewerProps {
   modelPath: string;
 }
 
-// Move updateModelMotion outside the component as a standalone function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function updateModelMotion(
   model: any,
@@ -24,33 +23,26 @@ function updateModelMotion(
 
     switch (state) {
       case 'idle': {
-        // Gentle body sway
         const breathY = Math.sin(Date.now() / 1000) * 2;
         const breathX = Math.sin(Date.now() / 2000) * 0.5;
         model.y = ((canvasRef.current?.width || 400) / 2) + model.height * model.scale.x * 0.1 + breathY;
         model.x = (canvasRef.current?.width || 400) / 2 + breathX;
-
-        // Reset mouth
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
         }
         break;
       }
       case 'listening': {
-        // Subtle head movement
         const listenX = Math.sin(Date.now() / 500) * 3;
         const listenY = Math.sin(Date.now() / 800) * 1;
         model.x = (canvasRef.current?.width || 400) / 2 + listenX;
         model.y = ((canvasRef.current?.height || 600) / 2) + model.height * model.scale.x * 0.1 + listenY;
-
-        // Slight mouth open (like listening)
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0.1);
         }
         break;
       }
       case 'thinking': {
-        // Head tilts
         const thinkAngle = Math.sin(Date.now() / 1200) * 15;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamAngleX', thinkAngle);
@@ -60,7 +52,6 @@ function updateModelMotion(
         break;
       }
       case 'speaking': {
-        // Lip sync animation
         if (coreModel.setParameterValueById) {
           const mouthValue = Math.abs(Math.sin(Date.now() / 150)) * 0.8 + 0.1;
           coreModel.setParameterValueById('ParamMouthOpenY', mouthValue);
@@ -81,7 +72,6 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const animFrameRef = useRef<number>(0);
-  const timeRef = useRef<number>(0);
   const avatarStateRef = useRef(avatarState);
 
   // Keep avatarState in a ref so the animation loop always uses latest value
@@ -91,16 +81,13 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
 
   const initLive2D = useCallback(async () => {
     try {
-      // Wait for PIXI and Live2D to be available
       const maxWait = 15000;
       const startTime = Date.now();
 
       while (startTime + maxWait > Date.now()) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any;
-        if (w.PIXI && w.PIXI.live2d && w.Live2DCubismCore) {
-          break;
-        }
+        if (w.PIXI && w.PIXI.live2d && w.Live2DCubismCore) break;
         await new Promise((r) => setTimeout(r, 200));
       }
 
@@ -117,9 +104,8 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Destroy existing app
       if (appRef.current) {
-        (appRef.current as { destroy: (removeView?: boolean) => void }).destroy(true);
+        (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
         appRef.current = null;
       }
 
@@ -132,11 +118,9 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       });
       appRef.current = app;
 
-      // Load model
       const model = await Live2DModel.from(modelPath, { autoInteract: false });
       modelRef.current = model;
 
-      // Scale model to fit
       const scaleX = (canvas.width || 400) / model.width * 0.8;
       const scaleY = (canvas.height || 600) / model.height * 0.8;
       const scale = Math.min(scaleX, scaleY, 0.5);
@@ -147,8 +131,6 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
 
       app.stage.addChild(model);
 
-      // Start animation loop for avatar states
-      timeRef.current = Date.now();
       const animate = () => {
         updateModelMotion(model, avatarStateRef.current, canvasRef);
         animFrameRef.current = requestAnimationFrame(animate);
@@ -171,7 +153,7 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
         cancelAnimationFrame(animFrameRef.current);
       }
       if (appRef.current) {
-        (appRef.current as { destroy: (removeView?: boolean) => void }).destroy(true);
+        (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
         appRef.current = null;
       }
     };
@@ -200,36 +182,6 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
           </div>
           <p className="text-sm text-destructive">{loadError}</p>
         </div>
-      )}
-      {isLoaded && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-          <StatusBadge state={avatarState} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusBadge({ state }: { state: AvatarState }) {
-  const config: Record<AvatarState, { label: string; color: string; icon: string }> = {
-    idle: { label: 'في انتظارك', color: 'bg-gray-500', icon: '😴' },
-    listening: { label: 'أستمع...', color: 'bg-emerald-500', icon: '🎤' },
-    thinking: { label: 'أفكر...', color: 'bg-amber-500', icon: '🤔' },
-    speaking: { label: 'أتكلم...', color: 'bg-rose-500', icon: '🔊' },
-  };
-
-  const c = config[state];
-
-  return (
-    <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${c.color} text-white text-sm font-medium shadow-lg backdrop-blur-sm`}>
-      <span>{c.icon}</span>
-      <span>{c.label}</span>
-      {state === 'listening' && (
-        <span className="flex gap-0.5">
-          <span className="w-1 h-3 bg-white rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-          <span className="w-1 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-          <span className="w-1 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
-        </span>
       )}
     </div>
   );

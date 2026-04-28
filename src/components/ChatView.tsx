@@ -6,7 +6,6 @@ import {
   Mic,
   MicOff,
   Send,
-  Settings,
   VolumeX,
   Volume2,
   MessageSquare,
@@ -41,6 +40,7 @@ export default function ChatView() {
     setIsLoading,
     setError,
     setAppState,
+    selectedBackground,
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
@@ -215,12 +215,23 @@ export default function ChatView() {
   }, [muted, setAvatarState]);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-950 via-gray-900 to-emerald-950 overflow-hidden">
-      {/* Background orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-      </div>
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Background */}
+      {selectedBackground ? (
+        <div className="fixed inset-0 z-0">
+          <img
+            src={`/backgrounds/${selectedBackground}.png`}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/30" />
+        </div>
+      ) : (
+        <div className="fixed inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-emerald-950 z-0">
+          <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        </div>
+      )}
 
       {/* Top bar */}
       <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/20 backdrop-blur-sm">
@@ -245,10 +256,17 @@ export default function ChatView() {
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+            className="w-9 h-9 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
             title="الإعدادات"
           >
-            <Settings className="w-4 h-4 text-gray-400" />
+            <img
+              src="/settings-icon.png"
+              alt="Settings"
+              className="w-6 h-6 rounded object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
           </button>
         </div>
       </header>

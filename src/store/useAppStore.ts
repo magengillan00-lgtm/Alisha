@@ -39,6 +39,10 @@ interface AppStore {
   responseLanguage: ResponseLanguage;
   setResponseLanguage: (lang: ResponseLanguage) => void;
 
+  // Background
+  selectedBackground: string;
+  setSelectedBackground: (bg: string) => void;
+
   // Loading
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -70,6 +74,9 @@ export const useAppStore = create<AppStore>((set) => ({
 
   responseLanguage: 'ar',
   setResponseLanguage: (responseLanguage) => set({ responseLanguage }),
+
+  selectedBackground: '',
+  setSelectedBackground: (selectedBackground) => set({ selectedBackground }),
 
   isLoading: false,
   setIsLoading: (isLoading) => set({ isLoading }),
