@@ -134,7 +134,7 @@ export default function SetupWizard() {
             </button>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-white/10">
+          <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
             <p className="text-xs text-gray-500 text-center">
               كيف تحصل على المفتاح؟
             </p>
@@ -150,6 +150,15 @@ export default function SetupWizard() {
               </a>{' '}
               → Create API Key
             </p>
+            {isVerifying && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-xs text-emerald-400/70 text-center"
+              >
+                جاري التحقق من المفتاح واختبار الموديلات المتاحة...
+              </motion.p>
+            )}
           </div>
         </motion.div>
       </motion.div>
