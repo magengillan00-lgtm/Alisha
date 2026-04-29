@@ -173,7 +173,8 @@ export default function ChatView() {
           timestamp: Date.now(),
         };
         addMessage(assistantMsg);
-        setAvatarState('speaking');
+        // Keep 'thinking' state until speech actually starts playing
+        // This ensures lip sync is synchronized with audio
 
         // Speak the response (voice only - no text shown)
         if (!muted) {
@@ -182,13 +183,17 @@ export default function ChatView() {
             data.text,
             speechLang,
             () => {
+              // Speech ended - return to idle
               setAvatarState('idle');
             },
             () => {
-              // Speech started
+              // Speech ACTUALLY started playing - now switch to speaking state
+              // This ensures mouth movement is synchronized with audio output
+              setAvatarState('speaking');
             }
           );
         } else {
+          // Muted - skip speaking, go idle after brief delay
           setTimeout(() => setAvatarState('idle'), 1000);
         }
       } catch (err) {

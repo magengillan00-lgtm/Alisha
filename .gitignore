@@ -50,5 +50,29 @@ test
 prompt
 
 server.log
+# Android build
+/android/app/build/
+/android/build/
+/android/.gradle/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# JDK
+/home/z/jdk/
+
+# Android SDK
+/home/z/android-sdk/
+
+# Capacitor generated
+android/app/src/main/assets/public/
+
+# Upload files
+/upload/
+
+# Database
+*.db
+
 # Skills directory
 /skills/

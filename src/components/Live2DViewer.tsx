@@ -47,7 +47,7 @@ function updateModelMotion(
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamAngleX', thinkAngle);
           coreModel.setParameterValueById('ParamAngleY', Math.sin(Date.now() / 800) * 5);
-          coreModel.setParameterValueById('ParamMouthOpenY', 0.05);
+          coreModel.setParameterValueById('ParamMouthOpenY', 0);
         }
         break;
       }

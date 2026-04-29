@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Alisha</string>
+    <string name="title_activity_main">Alisha</string>
+    <string name="package_name">com.alisha.ai</string>
+    <string name="custom_url_scheme">com.alisha.ai</string>
+</resources>
