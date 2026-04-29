@@ -1,106 +1,450 @@
-// Client-side Gemini API service
-// Calls Gemini REST API directly from the browser to avoid server region restrictions
+// Multi-provider AI API client
+// Supports: Gemini, HuggingFace, NVIDIA, Groq, Together, OpenRouter, Cohere, Mistral
 
-const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+import { ApiProvider, type MemoryItem } from '@/store/useAppStore';
 
-export interface GeminiModel {
+// ============ PROVIDER CONFIGURATIONS ============
+
+interface ProviderConfig {
   name: string;
-  displayName?: string;
-  description?: string;
-  supportedGenerationMethods?: string[];
+  baseUrl: string;
+  listEndpoint: string;
+  chatEndpoint: (model: string) => string;
+  listModels: (apiKey: string) => Promise<string[]>;
+  sendMessage: (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string) => Promise<string>;
+  testModel: (apiKey: string, model: string) => Promise<boolean>;
 }
 
-// Only show these model name patterns (exclude embedding, vision-only, etc.)
-const ALLOWED_MODEL_PATTERNS = [
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+const ALLOWED_GEMINI_PATTERNS = [
   'gemini-1.5-flash',
   'gemini-1.5-pro',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
-  'chat-bison',
 ];
 
-export async function listModels(apiKey: string): Promise<{ models: string[] }> {
-  const res = await fetch(`${BASE_URL}/models?key=${apiKey}`);
+// ============ GEMINI PROVIDER ============
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const errorMsg = errorData?.error?.message || '';
-
-    if (res.status === 400) {
-      if (errorMsg.includes('location is not supported')) {
-        throw new Error('موقعك الجغرافي غير مدعوم لاستخدام Gemini API. يرجى استخدام VPN أو الاتصال من منطقة مختلفة.');
+const geminiProvider: ProviderConfig = {
+  name: 'Gemini',
+  baseUrl: GEMINI_BASE_URL,
+  listEndpoint: `${GEMINI_BASE_URL}/models`,
+  chatEndpoint: (model) => `${GEMINI_BASE_URL}/models/${model}:generateContent`,
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch(`${GEMINI_BASE_URL}/models?key=${apiKey}`);
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMsg = errorData?.error?.message || '';
+      if (res.status === 400 && errorMsg.includes('location is not supported')) {
+        throw new Error('موقعك الجغرافي غير مدعوم لاستخدام Gemini API.');
       }
-      throw new Error('مفتاح API غير صالح. يرجى التحقق من المفتاح وإعادة المحاولة.');
+      if (res.status === 401 || res.status === 403) {
+        throw new Error('مفتاح Gemini API غير صالح.');
+      }
+      throw new Error(errorMsg || 'فشل في جلب قائمة موديلات Gemini');
     }
-    if (res.status === 401 || res.status === 403) {
-      throw new Error('مفتاح API غير صالح أو ليس لديك صلاحية الوصول.');
+    const data = await res.json();
+    let models = (data.models || [])
+      .filter((m: { supportedGenerationMethods?: string[]; name: string }) => {
+        if (!m.supportedGenerationMethods?.includes('generateContent')) return false;
+        const modelName = m.name.replace('models/', '');
+        return ALLOWED_GEMINI_PATTERNS.some((p) => modelName.includes(p));
+      })
+      .map((m: { name: string }) => m.name.replace('models/', ''));
+    return models;
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const contents = messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+    const res = await fetch(`${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: { temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 1024 },
+      }),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMsg = errorData?.error?.message || '';
+      if (res.status === 429) throw new Error('تم تجاوز حد الطلبات. انتظر قليلاً.');
+      throw new Error(errorMsg || 'حدث خطأ أثناء الاتصال بـ Gemini');
     }
-    throw new Error(errorMsg || 'فشل في جلب قائمة الموديلات');
-  }
-
-  const data = await res.json();
-
-  // Step 1: Filter only models with generateContent AND matching allowed patterns
-  let models = (data.models || [])
-    .filter((m: GeminiModel) => {
-      if (!m.supportedGenerationMethods?.includes('generateContent')) return false;
-      const modelName = m.name.replace('models/', '');
-      return ALLOWED_MODEL_PATTERNS.some((pattern) => modelName.includes(pattern));
-    })
-    .map((m: GeminiModel) => m.name.replace('models/', ''));
-
-  // Step 2: Verify each model actually works with a tiny request
-  const verifiedModels: string[] = [];
-  const testPromises = models.map(async (model: string) => {
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('لم يتم الحصول على رد من Gemini.');
+    return text;
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
-      const testRes = await fetch(
-        `${BASE_URL}/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
-            generationConfig: { maxOutputTokens: 5 },
-          }),
-        }
-      );
-      if (testRes.ok) {
-        return model;
-      }
-      return null;
+      const res = await fetch(`${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        }),
+      });
+      return res.ok;
     } catch {
-      return null;
+      return false;
     }
-  });
+  },
+};
 
-  const results = await Promise.allSettled(testPromises);
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value) {
-      verifiedModels.push(r.value);
+// ============ HUGGINGFACE PROVIDER ============
+
+const huggingfaceProvider: ProviderConfig = {
+  name: 'HuggingFace',
+  baseUrl: 'https://api-inference.huggingface.co',
+  listEndpoint: 'https://huggingface.co/api/models',
+  chatEndpoint: (model) => `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`,
+  listModels: async (apiKey: string): Promise<string[]> => {
+    // Common free text generation models on HF
+    const commonModels = [
+      'mistralai/Mistral-7B-Instruct-v0.3',
+      'google/gemma-2-2b-it',
+      'google/gemma-2-9b-it',
+      'microsoft/Phi-3-mini-4k-instruct',
+      'meta-llama/Meta-Llama-3-8B-Instruct',
+      'HuggingFaceH4/zephyr-7b-beta',
+    ];
+    // Verify which ones are available
+    const verified = await Promise.allSettled(
+      commonModels.map(async (model) => {
+        try {
+          const res = await fetch(`https://api-inference.huggingface.co/models/${model}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+          });
+          if (res.ok || res.status === 503) return model; // 503 = model loading, still valid
+          return null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    return verified.filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value !== null).map((r) => r.value);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch(`https://api-inference.huggingface.co/models/${model}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) {
+      if (res.status === 503) throw new Error('الموديل قيد التحميل حالياً. حاول مرة أخرى بعد قليل.');
+      throw new Error('حدث خطأ أثناء الاتصال بـ HuggingFace');
     }
-  }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`https://api-inference.huggingface.co/models/${model}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok || res.status === 503;
+    } catch {
+      return false;
+    }
+  },
+};
 
-  // Step 3: Sort with recommended models first
-  const priority = (name: string) => {
-    if (name.includes('2.5-flash')) return 0;
-    if (name.includes('2.5-pro')) return 1;
-    if (name.includes('2.0-flash') && !name.includes('lite')) return 2;
-    if (name.includes('2.0-flash-lite')) return 3;
-    if (name.includes('1.5-flash')) return 4;
-    if (name.includes('1.5-pro')) return 5;
-    return 6;
-  };
+// ============ NVIDIA PROVIDER ============
 
-  verifiedModels.sort((a, b) => priority(a) - priority(b));
+const nvidiaProvider: ProviderConfig = {
+  name: 'NVIDIA',
+  baseUrl: 'https://integrate.api.nvidia.com/v1',
+  listEndpoint: 'https://integrate.api.nvidia.com/v1/models',
+  chatEndpoint: (model) => `https://integrate.api.nvidia.com/v1/chat/completions`,
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://integrate.api.nvidia.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح NVIDIA API غير صالح.');
+    const data = await res.json();
+    // Filter for chat models
+    const chatModels = (data.data || [])
+      .filter((m: { id: string }) => !m.id.includes('embedding') && !m.id.includes('ranking') && !m.id.includes('rerank'))
+      .map((m: { id: string }) => m.id);
+    return chatModels.slice(0, 30); // Limit to 30
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ NVIDIA API');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
 
-  if (verifiedModels.length === 0) {
-    throw new Error('لا توجد موديلات متاحة لهذا المفتاح. تأكد من تفعيل Gemini API في Google AI Studio.');
-  }
+// ============ GROQ PROVIDER ============
 
-  return { models: verifiedModels };
-}
+const groqProvider: ProviderConfig = {
+  name: 'Groq',
+  baseUrl: 'https://api.groq.com/openai/v1',
+  listEndpoint: 'https://api.groq.com/openai/v1/models',
+  chatEndpoint: () => 'https://api.groq.com/openai/v1/chat/completions',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Groq API غير صالح.');
+    const data = await res.json();
+    return (data.data || []).map((m: { id: string }) => m.id);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Groq API');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ============ TOGETHER PROVIDER ============
+
+const togetherProvider: ProviderConfig = {
+  name: 'Together',
+  baseUrl: 'https://api.together.xyz/v1',
+  listEndpoint: 'https://api.together.xyz/v1/models',
+  chatEndpoint: () => 'https://api.together.xyz/v1/chat/completions',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://api.together.xyz/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Together API غير صالح.');
+    const data = await res.json();
+    return (data.data || []).map((m: { id: string }) => m.id);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://api.together.xyz/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Together API');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://api.together.xyz/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ============ OPENROUTER PROVIDER ============
+
+const openrouterProvider: ProviderConfig = {
+  name: 'OpenRouter',
+  baseUrl: 'https://openrouter.ai/api/v1',
+  listEndpoint: 'https://openrouter.ai/api/v1/models',
+  chatEndpoint: () => 'https://openrouter.ai/api/v1/chat/completions',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح OpenRouter API غير صالح.');
+    const data = await res.json();
+    // Filter free models
+    const freeModels = (data.data || [])
+      .filter((m: { pricing?: { prompt?: string } }) => (m.pricing?.prompt || '0') === '0')
+      .map((m: { id: string }) => m.id);
+    return freeModels.slice(0, 30);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ OpenRouter API');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ============ COHERE PROVIDER ============
+
+const cohereProvider: ProviderConfig = {
+  name: 'Cohere',
+  baseUrl: 'https://api.cohere.ai/v1',
+  listEndpoint: 'https://api.cohere.ai/v1/models',
+  chatEndpoint: () => 'https://api.cohere.ai/v1/chat',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://api.cohere.ai/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Cohere API غير صالح.');
+    const data = await res.json();
+    return (data.models || []).map((m: { name: string }) => m.name);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const chatHistory = [];
+    let lastMessage = '';
+    for (const m of messages) {
+      if (m.role === 'user') lastMessage = m.content;
+      else if (m.role === 'assistant') chatHistory.push({ role: 'CHATBOT', message: m.content });
+      else chatHistory.push({ role: 'USER', message: m.content });
+    }
+    const res = await fetch('https://api.cohere.ai/v1/chat', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        message: lastMessage,
+        preamble: systemPrompt,
+        chat_history: chatHistory,
+      }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Cohere API');
+    const data = await res.json();
+    return data.text || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://api.cohere.ai/v1/chat', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, message: 'hi', max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ============ MISTRAL PROVIDER ============
+
+const mistralProvider: ProviderConfig = {
+  name: 'Mistral',
+  baseUrl: 'https://api.mistral.ai/v1',
+  listEndpoint: 'https://api.mistral.ai/v1/models',
+  chatEndpoint: () => 'https://api.mistral.ai/v1/chat/completions',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://api.mistral.ai/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Mistral API غير صالح.');
+    const data = await res.json();
+    return (data.data || []).map((m: { id: string }) => m.id);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Mistral API');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
+// ============ PROVIDER REGISTRY ============
+
+export const PROVIDERS: Record<ApiProvider, ProviderConfig> = {
+  gemini: geminiProvider,
+  huggingface: huggingfaceProvider,
+  nvidia: nvidiaProvider,
+  groq: groqProvider,
+  together: togetherProvider,
+  openrouter: openrouterProvider,
+  cohere: cohereProvider,
+  mistral: mistralProvider,
+};
+
+export const PROVIDER_INFO: { id: ApiProvider; name: string; nameAr: string; icon: string; color: string; keyPlaceholder: string }[] = [
+  { id: 'gemini', name: 'Google Gemini', nameAr: 'جوجل جيميني', icon: '⚡', color: 'from-blue-500 to-cyan-500', keyPlaceholder: 'AIza...' },
+  { id: 'huggingface', name: 'HuggingFace', nameAr: 'هاجينج فيس', icon: '🤗', color: 'from-yellow-500 to-orange-500', keyPlaceholder: 'hf_...' },
+  { id: 'nvidia', name: 'NVIDIA NIM', nameAr: 'إنفيديا', icon: '💚', color: 'from-green-500 to-emerald-600', keyPlaceholder: 'nvapi-...' },
+  { id: 'groq', name: 'Groq', nameAr: 'جروك', icon: '🚀', color: 'from-orange-500 to-red-500', keyPlaceholder: 'gsk_...' },
+  { id: 'together', name: 'Together AI', nameAr: 'توجذر', icon: '🔗', color: 'from-purple-500 to-pink-500', keyPlaceholder: 'Bearer ...' },
+  { id: 'openrouter', name: 'OpenRouter', nameAr: 'أوبن راوتر', icon: '🌐', color: 'from-indigo-500 to-violet-500', keyPlaceholder: 'sk-or-...' },
+  { id: 'cohere', name: 'Cohere', nameAr: 'كوهير', icon: '🔮', color: 'from-teal-500 to-cyan-500', keyPlaceholder: 'Bearer ...' },
+  { id: 'mistral', name: 'Mistral AI', nameAr: 'ميسترال', icon: '🌪️', color: 'from-sky-500 to-blue-600', keyPlaceholder: 'Bearer ...' },
+];
+
+// ============ PUBLIC API FUNCTIONS ============
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -128,75 +472,56 @@ const LANG_INSTRUCTIONS: Record<string, string> = {
 - 番号付きリストや箇条書きは避け、普通の文を使ってください。`,
 };
 
+function buildSystemPrompt(language: string, permanentMemory: MemoryItem[]): string {
+  const langInstruction = LANG_INSTRUCTIONS[language] || LANG_INSTRUCTIONS['ar'];
+  if (permanentMemory.length === 0) return langInstruction;
+
+  const memoryBlock = permanentMemory
+    .sort((a, b) => a.order - b.order)
+    .map((m) => `[${m.order}] ${m.content}`)
+    .join('\n');
+
+  return `${langInstruction}\n\n--- تعليمات مهمة من ملف الذاكرة الدائمة (يجب اتباعها دائماً) ---\n${memoryBlock}\n--- نهاية التعليمات ---`;
+}
+
+export async function listModels(provider: ApiProvider, apiKey: string): Promise<{ models: string[] }> {
+  const p = PROVIDERS[provider];
+  let models = await p.listModels(apiKey);
+
+  // Verify each model works
+  const verifiedModels: string[] = [];
+  const batchSize = 5;
+  for (let i = 0; i < models.length; i += batchSize) {
+    const batch = models.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map((m) => p.testModel(apiKey, m)));
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === 'fulfilled' && results[j].value) {
+        verifiedModels.push(batch[j]);
+      }
+    }
+  }
+
+  if (verifiedModels.length === 0) {
+    throw new Error(`لا توجد موديلات متاحة لمفتاح ${p.name}. تأكد من صحة المفتاح.`);
+  }
+
+  return { models: verifiedModels };
+}
+
 export async function sendMessage(
+  provider: ApiProvider,
   apiKey: string,
   model: string,
   messages: ChatMessage[],
-  language: string
+  language: string,
+  permanentMemory: MemoryItem[]
 ): Promise<{ text: string }> {
-  const systemPrompt = LANG_INSTRUCTIONS[language] || LANG_INSTRUCTIONS['ar'];
-
-  // Build Gemini API format
-  const contents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const requestBody = {
-    contents,
-    systemInstruction: {
-      parts: [{ text: systemPrompt }],
-    },
-    generationConfig: {
-      temperature: 0.9,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 1024,
-    },
-  };
-
-  const res = await fetch(
-    `${BASE_URL}/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    }
-  );
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    const errorMsg = errorData?.error?.message || '';
-
-    if (res.status === 400 && errorMsg.includes('location is not supported')) {
-      throw new Error('موقعك الجغرافي غير مدعوم لاستخدام Gemini API.');
-    }
-    if (res.status === 400 && errorMsg.includes('not found') || errorMsg.includes('does not exist')) {
-      throw new Error('هذا الموديل غير متاح لمفتاحك. يرجى اختيار موديل آخر من الإعدادات.');
-    }
-    if (res.status === 400 && errorMsg.includes('quota')) {
-      throw new Error('تم تجاوز حصة هذا الموديل. جرب موديل آخر مثل gemini-1.5-flash أو gemini-2.0-flash.');
-    }
-    if (res.status === 401 || res.status === 403) {
-      throw new Error('مفتاح API غير صالح.');
-    }
-    if (res.status === 429) {
-      throw new Error('تم تجاوز حد الطلبات. يرجى الانتظار قليلاً ثم حاول مرة أخرى.');
-    }
-
-    throw new Error(errorMsg || 'حدث خطأ أثناء الاتصال بـ Gemini');
-  }
-
-  const data = await res.json();
-
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    const blockReason = data?.candidates?.[0]?.finishReason;
-    if (blockReason === 'SAFETY') {
-      throw new Error('تم حظر الرد بسبب سياسات الأمان. حاول سؤال مختلف.');
-    }
-    throw new Error('لم يتم الحصول على رد من Gemini. حاول مرة أخرى.');
-  }
-
+  const p = PROVIDERS[provider];
+  const systemPrompt = buildSystemPrompt(language, permanentMemory);
+  const formattedMessages = messages.map((m) => ({ role: m.role, content: m.content }));
+  const text = await p.sendMessage(apiKey, model, formattedMessages, systemPrompt);
   return { text };
 }
+
+// Legacy support for backward compatibility
+export { sendMessage as _legacySendMessage };

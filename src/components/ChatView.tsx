@@ -35,12 +35,14 @@ export default function ChatView() {
     setAvatarState,
     messages,
     addMessage,
-    clearMessages,
     isLoading,
     setIsLoading,
     setError,
     setAppState,
     selectedBackground,
+    activeProvider,
+    apiKeys,
+    permanentMemory,
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
@@ -52,8 +54,6 @@ export default function ChatView() {
   const [lastUserText, setLastUserText] = useState('');
 
   const recognitionRef = useRef<unknown>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize voices on mount
   useEffect(() => {
@@ -61,6 +61,12 @@ export default function ChatView() {
   }, []);
 
   const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
+
+  // Get the active API key
+  const getActiveApiKey = useCallback(() => {
+    const keyEntry = apiKeys.find((k) => k.provider === activeProvider);
+    return keyEntry?.key || apiKey;
+  }, [apiKeys, activeProvider, apiKey]);
 
   // --- Speech Recognition ---
   const startRecording = useCallback(() => {
@@ -126,7 +132,7 @@ export default function ChatView() {
     }
   }, [isRecording, stopRecording, startRecording, setAvatarState]);
 
-  // --- Send Message to Gemini ---
+  // --- Send Message to AI ---
   const sendUserMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || isLoading) return;
@@ -149,8 +155,15 @@ export default function ChatView() {
           { role: 'user' as const, content: text.trim() },
         ];
 
-        // Call Gemini API directly from browser
-        const data = await sendMessage(apiKey, selectedModel, chatMessages, responseLanguage);
+        const activeKey = getActiveApiKey();
+        const data = await sendMessage(
+          activeProvider,
+          activeKey,
+          selectedModel,
+          chatMessages,
+          responseLanguage,
+          permanentMemory
+        );
 
         // Store in history but don't display
         const assistantMsg = {
@@ -186,7 +199,7 @@ export default function ChatView() {
         setIsLoading(false);
       }
     },
-    [messages, apiKey, selectedModel, responseLanguage, isLoading, muted, addMessage, setIsLoading, setError, setAvatarState]
+    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, muted, addMessage, setIsLoading, setError, setAvatarState, permanentMemory]
   );
 
   const handleTextSubmit = useCallback(
@@ -280,7 +293,7 @@ export default function ChatView() {
           </div>
         </div>
 
-        {/* Status overlay - shows what user said briefly */}
+        {/* Status overlay - shows what user said briefly (NO emoji/status text) */}
         <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none">
           {lastUserText && avatarState !== 'idle' && (
             <motion.div
@@ -318,7 +331,6 @@ export default function ChatView() {
             >
               <form onSubmit={handleTextSubmit} className="flex gap-2">
                 <input
-                  ref={inputRef}
                   type="text"
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
@@ -361,7 +373,7 @@ export default function ChatView() {
                   animate={{ scale: 1 }}
                   onClick={stopSpeaking}
                   className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center hover:bg-rose-500/30 transition-all"
-                  title="إيقاف الرد"
+                  title="إيقاف"
                 >
                   <span className="w-5 h-5 bg-rose-400 rounded-sm" />
                 </motion.button>
@@ -402,26 +414,6 @@ export default function ChatView() {
               )}
             </div>
           )}
-
-          {/* Hint */}
-          <p className="text-xs text-gray-600 text-center mt-4">
-            {isRecording
-              ? responseLanguage === 'ar'
-                ? '🎤 جاري التسجيل... اضغط مرة أخرى للإيقاف'
-                : '🎤 Recording... tap again to stop'
-              : avatarState === 'thinking'
-              ? responseLanguage === 'ar'
-                ? '🤔 جاري التفكير...'
-                : '🤔 Thinking...'
-              : avatarState === 'speaking'
-              ? responseLanguage === 'ar'
-                ? '🔊 جاري الرد...'
-                : '🔊 Speaking...'
-              : responseLanguage === 'ar'
-              ? '🎤 اضغط للم Talking | ⌨️ أو اكتب'
-              : '🎤 Tap to talk | ⌨️ or type'
-            }
-          </p>
         </div>
       </div>
 

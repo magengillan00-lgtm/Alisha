@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
-import { listModels } from '@/lib/gemini-client';
+import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
 
 export default function ModelSelector() {
   const {
@@ -14,24 +14,18 @@ export default function ModelSelector() {
     setAppState,
     setApiKey,
     clearMessages,
+    activeProvider,
+    apiKeys,
   } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
 
+  const providerInfo = PROVIDER_INFO.find((p) => p.id === activeProvider);
+  const apiKey = apiKeys.find((k) => k.provider === activeProvider)?.key || '';
+
   const filteredModels = models.filter((m) =>
     m.toLowerCase().includes(search.toLowerCase())
   );
-
-  const sortedModels = [...filteredModels].sort((a, b) => {
-    // Prioritize gemini-2.5 and gemini-2.0 models
-    const priority = (name: string) => {
-      if (name.includes('2.5')) return 0;
-      if (name.includes('2.0')) return 1;
-      if (name.includes('1.5')) return 2;
-      return 3;
-    };
-    return priority(a) - priority(b);
-  });
 
   const handleSelect = (model: string) => {
     setSelectedModel(model);
@@ -41,7 +35,6 @@ export default function ModelSelector() {
     if (!selectedModel) return;
     setIsLoading(true);
     clearMessages();
-    // Small delay for animation
     setTimeout(() => {
       setAppState('chat');
       setIsLoading(false);
@@ -55,10 +48,10 @@ export default function ModelSelector() {
   };
 
   const handleRefresh = async () => {
+    if (!apiKey) return;
     setIsLoading(true);
     try {
-      const apiKey = useAppStore.getState().apiKey;
-      const data = await listModels(apiKey);
+      const data = await listModels(activeProvider, apiKey);
       useAppStore.getState().setModels(data.models);
     } catch (e) {
       console.error(e);
@@ -92,7 +85,12 @@ export default function ModelSelector() {
             <Cpu className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">اختر الموديل</h1>
-          <p className="text-gray-400 text-sm">اختر موديل Gemini للمحادثة</p>
+          {providerInfo && (
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <span className="text-lg">{providerInfo.icon}</span>
+              <p className="text-gray-400 text-sm">{providerInfo.name} - {providerInfo.nameAr}</p>
+            </div>
+          )}
         </motion.div>
 
         {/* Card */}
@@ -117,7 +115,7 @@ export default function ModelSelector() {
           {/* Models list */}
           <div className="max-h-72 overflow-y-auto space-y-2 mb-4 custom-scrollbar">
             <AnimatePresence>
-              {sortedModels.map((model, index) => (
+              {filteredModels.map((model, index) => (
                 <motion.button
                   key={model}
                   initial={{ opacity: 0, x: -20 }}
@@ -147,7 +145,7 @@ export default function ModelSelector() {
               ))}
             </AnimatePresence>
 
-            {sortedModels.length === 0 && (
+            {filteredModels.length === 0 && (
               <p className="text-center text-gray-500 text-sm py-8">
                 لا توجد موديلات مطابقة
               </p>
