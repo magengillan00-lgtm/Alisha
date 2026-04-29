@@ -60,3 +60,27 @@ Stage Summary:
 - All settings in scrollable panel with collapsible sections
 - Status emoji/text removed from ChatView
 - Multi-provider model verification on setup
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix TTS not playing + lip sync + build APK + push to GitHub
+
+Work Log:
+- Analyzed speech.ts: Found that synth.cancel() was causing subsequent speak() to silently fail on mobile Chrome
+- Analyzed ChatView.tsx: Found no warmup call during user gesture, causing TTS to fail after async API calls
+- Rewrote speech.ts with: warmupSpeech(), cancelAndWait(), cancelSpeech(), retry mechanism, keep-alive timer, generation tracking
+- Updated ChatView.tsx: Added warmupSpeech() on user gesture, replaced direct synth.cancel() with cancelSpeech(), added 150ms delay before speak
+- Generated Android icons from Alisha avatar (settings-icon.png) for all densities (mdpi-xxxhdpi)
+- Updated splash screens with Alisha branding for all orientations
+- Changed next.config.ts output from "standalone" to "export" for Capacitor compatibility
+- Built Next.js static export, synced with Capacitor, built APK with Gradle
+- Installed JDK 21 (Eclipse Temurin) and Android SDK 36 for APK build
+- Pushed all changes to GitHub (magengillan00-lgtm/Alisha)
+- Created GitHub Release v1.0.0 with APK uploaded
+
+Stage Summary:
+- TTS Fix: Comprehensive rewrite of speech.ts with warmup, cancel-wait, retry, keep-alive
+- Lip Sync: Mouth only moves when utterance.onstart fires (already playing audio)
+- APK: Built successfully (41MB), uploaded to GitHub Releases
+- GitHub: All code pushed, release created at https://github.com/magengillan00-lgtm/Alisha/releases/tag/v1.0.0
+- APK Download: https://github.com/magengillan00-lgtm/Alisha/releases/download/v1.0.0/Alisha-v1.0.apk
