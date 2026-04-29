@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices } from '@/lib/speech';
+import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
 import SettingsDialog from '@/components/SettingsDialog';
 
@@ -58,6 +58,18 @@ export default function ChatView() {
   // Initialize voices on mount
   useEffect(() => {
     initVoices();
+    // Warm up speech synthesis on first user interaction
+    const handleFirstInteraction = () => {
+      warmupSpeech();
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+    };
+    document.addEventListener('click', handleFirstInteraction);
+    document.addEventListener('touchstart', handleFirstInteraction);
+    return () => {
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+    };
   }, []);
 
   const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
@@ -102,6 +114,8 @@ export default function ChatView() {
     }
 
     recognitionRef.current = recognition;
+    // Warm up TTS during user gesture (before async operation)
+    warmupSpeech();
     recognition.start();
     setIsRecording(true);
     setAvatarState('listening');
@@ -125,8 +139,8 @@ export default function ChatView() {
     if (isRecording) {
       stopRecording();
     } else {
-      // Stop any ongoing speech
-      window.speechSynthesis.cancel();
+      // Stop any ongoing speech properly
+      cancelSpeech();
       setAvatarState('idle');
       startRecording();
     }
@@ -179,19 +193,22 @@ export default function ChatView() {
         // Speak the response (voice only - no text shown)
         if (!muted) {
           const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
-          speakText(
-            data.text,
-            speechLang,
-            () => {
-              // Speech ended - return to idle
-              setAvatarState('idle');
-            },
-            () => {
-              // Speech ACTUALLY started playing - now switch to speaking state
-              // This ensures mouth movement is synchronized with audio output
-              setAvatarState('speaking');
-            }
-          );
+          // Small delay to ensure UI is ready and speech engine is free
+          setTimeout(() => {
+            speakText(
+              data.text,
+              speechLang,
+              () => {
+                // Speech ended - return to idle
+                setAvatarState('idle');
+              },
+              () => {
+                // Speech ACTUALLY started playing audio - now animate mouth
+                // This ensures lip sync is perfectly synchronized with sound
+                setAvatarState('speaking');
+              }
+            );
+          }, 150);
         } else {
           // Muted - skip speaking, go idle after brief delay
           setTimeout(() => setAvatarState('idle'), 1000);
@@ -218,7 +235,7 @@ export default function ChatView() {
   );
 
   const stopSpeaking = useCallback(() => {
-    window.speechSynthesis.cancel();
+    cancelSpeech();
     setAvatarState('idle');
   }, [setAvatarState]);
 
@@ -226,7 +243,7 @@ export default function ChatView() {
     if (muted) {
       setMuted(false);
     } else {
-      window.speechSynthesis.cancel();
+      cancelSpeech();
       setMuted(true);
       setAvatarState('idle');
     }
