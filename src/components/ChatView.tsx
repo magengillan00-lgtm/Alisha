@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech } from '@/lib/speech';
+import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
 import SettingsDialog from '@/components/SettingsDialog';
 
@@ -52,12 +52,15 @@ export default function ChatView() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
 
-  // Initialize voices on mount
+  // Initialize TTS and voices on mount
   useEffect(() => {
     initVoices();
+    initTTS(); // Auto-detect best TTS method
+
     // Warm up speech synthesis on first user interaction
     const handleFirstInteraction = () => {
       warmupSpeech();
@@ -69,6 +72,27 @@ export default function ChatView() {
     return () => {
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
+    };
+  }, []);
+
+  // Detect keyboard visibility using visualViewport API
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    function handleResize() {
+      const keyboardUp = vv.height < window.innerHeight * 0.85;
+      setKeyboardVisible(keyboardUp);
+    }
+
+    vv.addEventListener('resize', handleResize);
+    // Also listen for focus events on inputs
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      vv.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
@@ -163,6 +187,9 @@ export default function ChatView() {
       setIsLoading(true);
       setAvatarState('thinking');
 
+      // Hide keyboard when sending
+      setShowTextInput(false);
+
       try {
         const chatMessages = [
           ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
@@ -193,7 +220,7 @@ export default function ChatView() {
         // Speak the response (voice only - no text shown)
         if (!muted) {
           const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
-          // Small delay to ensure UI is ready and speech engine is free
+          // Small delay to ensure UI is ready
           setTimeout(() => {
             speakText(
               data.text,
@@ -204,11 +231,10 @@ export default function ChatView() {
               },
               () => {
                 // Speech ACTUALLY started playing audio - now animate mouth
-                // This ensures lip sync is perfectly synchronized with sound
                 setAvatarState('speaking');
               }
             );
-          }, 150);
+          }, 200);
         } else {
           // Muted - skip speaking, go idle after brief delay
           setTimeout(() => setAvatarState('idle'), 1000);
@@ -249,8 +275,72 @@ export default function ChatView() {
     }
   }, [muted, setAvatarState]);
 
+  // When keyboard is visible, show compact layout (no avatar, just input)
+  if (keyboardVisible && showTextInput) {
+    return (
+      <div className="h-[100dvh] flex flex-col bg-gray-950">
+        {/* Minimal top bar */}
+        <div className="flex items-center justify-between px-4 py-2 bg-black/30 border-b border-white/10">
+          <p className="text-xs text-gray-400 truncate">{selectedModel}</p>
+          <button
+            onClick={() => { setShowTextInput(false); setKeyboardVisible(false); }}
+            className="text-xs text-emerald-400 px-2"
+          >
+            {responseLanguage === 'ar' ? 'إخفاء' : responseLanguage === 'en' ? 'Hide' : '閉じる'}
+          </button>
+        </div>
+
+        {/* Compact message area */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3">
+          {avatarState === 'thinking' && (
+            <div className="w-10 h-10 border-3 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
+          )}
+          {lastUserText && avatarState !== 'idle' && (
+            <div className="bg-white/5 rounded-xl px-4 py-2 border border-white/10 max-w-xs">
+              <p className="text-xs text-emerald-300 text-center">{lastUserText}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Input area - stays above keyboard */}
+        <div className="bg-gray-950/95 border-t border-white/10 px-3 py-2 pb-3">
+          <form onSubmit={handleTextSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder={
+                responseLanguage === 'ar'
+                  ? 'اكتب رسالتك...'
+                  : responseLanguage === 'en'
+                  ? 'Type your message...'
+                  : 'メッセージを入力...'
+              }
+              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
+              disabled={isLoading}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={!textInput.trim() || isLoading}
+              className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              <Send className="w-4 h-4 text-emerald-400" />
+            </button>
+          </form>
+        </div>
+
+        <SettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onModelChange={() => setAppState('selectModel')}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-[100dvh] flex flex-col overflow-hidden">
       {/* Background */}
       {selectedBackground ? (
         <div className="fixed inset-0 z-0">
@@ -269,7 +359,7 @@ export default function ChatView() {
       )}
 
       {/* Top bar */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/20 backdrop-blur-sm">
+      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/20 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
             <MessageSquare className="w-4 h-4 text-white" />
@@ -307,7 +397,7 @@ export default function ChatView() {
       </header>
 
       {/* Main content - Full screen avatar */}
-      <div className="flex-1 relative z-10 overflow-hidden">
+      <div className="flex-1 relative z-10 overflow-hidden min-h-0">
         {/* Avatar - Center stage */}
         <div className="absolute inset-0 flex items-center justify-center p-4">
           <div className="relative w-full max-w-[500px] max-h-full aspect-[3/4]">
@@ -315,7 +405,7 @@ export default function ChatView() {
           </div>
         </div>
 
-        {/* Status overlay - shows what user said briefly (NO emoji/status text) */}
+        {/* Status overlay - shows what user said briefly */}
         <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none">
           {lastUserText && avatarState !== 'idle' && (
             <motion.div

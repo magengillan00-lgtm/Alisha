@@ -53,6 +53,16 @@ const BACKGROUNDS: BackgroundOption[] = [
   { id: 'bg18-steampunk-city', name: 'مدينة البخار', nameEn: 'Steampunk City', emoji: '⚙️', gradient: 'from-amber-600 via-orange-700 to-red-800' },
   { id: 'bg19-cloud-paradise', name: 'جنة السحب', nameEn: 'Cloud Paradise', emoji: '☁️', gradient: 'from-pink-300 via-purple-300 to-indigo-300' },
   { id: 'bg20-magic-library', name: 'المكتبة السحرية', nameEn: 'Magic Library', emoji: '📚', gradient: 'from-amber-800 via-yellow-900 to-orange-900' },
+  { id: 'bg21-cherry-blossom-night', name: 'ساكورا الليل', nameEn: 'Cherry Blossom Night', emoji: '🌺', gradient: 'from-pink-900 via-rose-800 to-indigo-900' },
+  { id: 'bg22-ice-palace', name: 'قصر الجليد', nameEn: 'Ice Palace', emoji: '❄️', gradient: 'from-blue-200 via-cyan-200 to-purple-300' },
+  { id: 'bg23-firework-festival', name: 'مهرجان الألعاب النارية', nameEn: 'Firework Festival', emoji: '🎆', gradient: 'from-orange-400 via-red-500 to-purple-800' },
+  { id: 'bg24-zen-garden', name: 'حديقة الزن', nameEn: 'Zen Garden', emoji: '🍃', gradient: 'from-green-800 via-emerald-700 to-amber-700' },
+  { id: 'bg25-starlight-beach', name: 'شاطئ النجوم', nameEn: 'Starlight Beach', emoji: '🏖️', gradient: 'from-blue-900 via-cyan-600 to-indigo-800' },
+  { id: 'bg26-ancient-temple', name: 'المعبد القديم', nameEn: 'Ancient Temple', emoji: '⛩️', gradient: 'from-gray-700 via-emerald-800 to-blue-900' },
+  { id: 'bg27-flower-field', name: 'حقل الزهور', nameEn: 'Flower Field', emoji: '🌷', gradient: 'from-pink-300 via-rose-300 to-amber-300' },
+  { id: 'bg28-cloud-city', name: 'المدينة السحابية', nameEn: 'Cloud City', emoji: '🌆', gradient: 'from-orange-300 via-purple-400 to-blue-600' },
+  { id: 'bg29-moonlight-forest', name: 'غابة ضوء القمر', nameEn: 'Moonlight Forest', emoji: '🌙', gradient: 'from-blue-900 via-indigo-800 to-green-900' },
+  { id: 'bg30-sakura-river', name: 'نهر الساكورا', nameEn: 'Sakura River', emoji: '🌸', gradient: 'from-pink-300 via-cyan-300 to-blue-400' },
 ];
 
 const LANGUAGES: { code: ResponseLanguage; label: string; flag: string }[] = [
