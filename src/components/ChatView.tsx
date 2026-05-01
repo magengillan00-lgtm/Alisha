@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS } from '@/lib/speech';
+import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
 import SettingsDialog from '@/components/SettingsDialog';
 
@@ -61,8 +61,9 @@ export default function ChatView() {
     initVoices();
     initTTS(); // Auto-detect best TTS method
 
-    // Warm up speech synthesis on first user interaction
+    // Unlock audio and warm up speech synthesis on first user interaction
     const handleFirstInteraction = () => {
+      unlockAudio();
       warmupSpeech();
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
@@ -138,7 +139,8 @@ export default function ChatView() {
     }
 
     recognitionRef.current = recognition;
-    // Warm up TTS during user gesture (before async operation)
+    // Unlock audio and warm up TTS during user gesture (before async operation)
+    unlockAudio();
     warmupSpeech();
     recognition.start();
     setIsRecording(true);
