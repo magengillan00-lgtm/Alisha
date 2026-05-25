@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type AppState = 'setup' | 'selectModel' | 'chat';
+export type AppState = 'freeKeys' | 'selectModel' | 'chat';
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type ResponseLanguage = 'ar' | 'en' | 'ja';
 
@@ -23,6 +23,20 @@ export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'togeth
 export interface ApiKeyEntry {
   provider: ApiProvider;
   key: string;
+}
+
+// Free key type (imported from free-keys.ts)
+export interface FreeKey {
+  id: string;
+  key: string;
+  model: string;
+  status: 'new' | 'active' | 'rate_limited' | 'expired' | 'unknown';
+  budget: string;
+  rateLimit: string;
+  expires: string;
+  description: string;
+  category: string;
+  baseUrl: string;
 }
 
 export const DEFAULT_PERMANENT_MEMORY: MemoryItem[] = [
@@ -48,9 +62,21 @@ interface AppStore {
   appState: AppState;
   setAppState: (state: AppState) => void;
 
-  // API Keys - multi provider
+  // Free Keys
+  freeKeys: FreeKey[];
+  setFreeKeys: (keys: FreeKey[]) => void;
+  selectedFreeKey: FreeKey | null;
+  setSelectedFreeKey: (key: FreeKey | null) => void;
+  exhaustedKeyIds: string[];
+  markKeyExhausted: (keyId: string) => void;
+  switchToNextAvailableKey: () => FreeKey | null;
+  isUsingFreeKey: boolean;
+  setIsUsingFreeKey: (val: boolean) => void;
+
+  // API Keys - multi provider (manual)
   apiKeys: ApiKeyEntry[];
   setApiKeys: (keys: ApiKeyEntry[]) => void;
+  addApiKey: (entry: ApiKeyEntry) => void;
   getApiKey: (provider: ApiProvider) => string;
   activeProvider: ApiProvider;
   setActiveProvider: (provider: ApiProvider) => void;
@@ -99,12 +125,55 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
-  appState: 'setup',
+  appState: 'freeKeys',
   setAppState: (appState) => set({ appState }),
 
-  // Multi-provider API keys
+  // Free Keys
+  freeKeys: [],
+  setFreeKeys: (freeKeys) => set({ freeKeys }),
+  selectedFreeKey: null,
+  setSelectedFreeKey: (selectedFreeKey) => set({ selectedFreeKey }),
+  exhaustedKeyIds: [],
+  markKeyExhausted: (keyId) =>
+    set((state) => ({
+      exhaustedKeyIds: [...new Set([...state.exhaustedKeyIds, keyId])],
+    })),
+  switchToNextAvailableKey: () => {
+    const { freeKeys, exhaustedKeyIds, selectedFreeKey } = get();
+    const currentKeyIndex = selectedFreeKey
+      ? freeKeys.findIndex((k) => k.id === selectedFreeKey.id)
+      : -1;
+
+    // Try keys after current first
+    for (let i = currentKeyIndex + 1; i < freeKeys.length; i++) {
+      if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
+        set({ selectedFreeKey: freeKeys[i] });
+        return freeKeys[i];
+      }
+    }
+
+    // Then try keys before current
+    for (let i = 0; i < currentKeyIndex; i++) {
+      if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
+        set({ selectedFreeKey: freeKeys[i] });
+        return freeKeys[i];
+      }
+    }
+
+    // All keys exhausted
+    return null;
+  },
+  isUsingFreeKey: true,
+  setIsUsingFreeKey: (isUsingFreeKey) => set({ isUsingFreeKey }),
+
+  // Multi-provider API keys (manual entry)
   apiKeys: [],
   setApiKeys: (apiKeys) => set({ apiKeys }),
+  addApiKey: (entry) =>
+    set((state) => {
+      const existing = state.apiKeys.filter((k) => k.provider !== entry.provider);
+      return { apiKeys: [...existing, entry] };
+    }),
   getApiKey: (provider) => {
     const entry = get().apiKeys.find((k) => k.provider === provider);
     return entry?.key || '';

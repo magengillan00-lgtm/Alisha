@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw } from 'lucide-react';
+import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw, ArrowRight } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
+import { fetchFreeKeyModels, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
 
 export default function ModelSelector() {
   const {
@@ -16,6 +17,8 @@ export default function ModelSelector() {
     clearMessages,
     activeProvider,
     apiKeys,
+    isUsingFreeKey,
+    selectedFreeKey,
   } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -44,19 +47,30 @@ export default function ModelSelector() {
   const handleBack = () => {
     setApiKey('');
     setSelectedModel('');
-    setAppState('setup');
+    setAppState('freeKeys');
   };
 
   const handleRefresh = async () => {
-    if (!apiKey) return;
-    setIsLoading(true);
-    try {
-      const data = await listModels(activeProvider, apiKey);
-      useAppStore.getState().setModels(data.models);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
+    if (isUsingFreeKey && selectedFreeKey) {
+      setIsLoading(true);
+      try {
+        const updatedModels = await fetchFreeKeyModels(selectedFreeKey);
+        useAppStore.getState().setModels(updatedModels);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (apiKey) {
+      setIsLoading(true);
+      try {
+        const data = await listModels(activeProvider, apiKey);
+        useAppStore.getState().setModels(data.models);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -85,12 +99,19 @@ export default function ModelSelector() {
             <Cpu className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">اختر الموديل</h1>
-          {providerInfo && (
+          {isUsingFreeKey && selectedFreeKey ? (
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <div className={`w-6 h-6 rounded bg-gradient-to-br ${getCategoryColor(selectedFreeKey.category)} flex items-center justify-center text-sm`}>
+                {getCategoryIcon(selectedFreeKey.category)}
+              </div>
+              <p className="text-gray-400 text-sm">{selectedFreeKey.category} - مفتاح مجاني</p>
+            </div>
+          ) : providerInfo ? (
             <div className="flex items-center justify-center gap-2 mt-2">
               <span className="text-lg">{providerInfo.icon}</span>
               <p className="text-gray-400 text-sm">{providerInfo.name} - {providerInfo.nameAr}</p>
             </div>
-          )}
+          ) : null}
         </motion.div>
 
         {/* Card */}
@@ -158,7 +179,7 @@ export default function ModelSelector() {
               onClick={handleBack}
               className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2 text-sm"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowRight className="w-4 h-4" />
               رجوع
             </button>
 

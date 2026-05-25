@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Key, ArrowLeft, Loader2, Eye, EyeOff, Sparkles, AlertTriangle, Check, Wand2 } from 'lucide-react';
+import { Key, ArrowLeft, Loader2, Eye, EyeOff, Sparkles, AlertTriangle, Check, Wand2, ArrowRight } from 'lucide-react';
 import { useAppStore, type ApiProvider } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
 
@@ -16,20 +16,22 @@ function detectProvider(key: string): ApiProvider | null {
   if (k.includes('together.ai') || k.startsWith('Bearer ') && k.includes('together')) return 'together';
   if (k.startsWith('sk-or-')) return 'openrouter';
   if (k.startsWith('Bearer') && k.length > 20) {
-    // Generic bearer token - try Cohere first, then Mistral
     return 'mistral';
   }
   return null;
 }
 
-export default function SetupWizard() {
-  const { setAppState, setApiKeys, setActiveProvider } = useAppStore();
+interface SetupWizardProps {
+  onBack?: () => void;
+}
+
+export default function SetupWizard({ onBack }: SetupWizardProps) {
+  const { setAppState, setApiKeys, setActiveProvider, setIsUsingFreeKey } = useAppStore();
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detectedProvider, setDetectedProvider] = useState<ApiProvider | null>(null);
-  const [verifiedProviders, setVerifiedProviders] = useState<{ provider: ApiProvider; models: string[] }[]>([]);
 
   const detectedInfo = detectedProvider ? PROVIDER_INFO.find((p) => p.id === detectedProvider) : null;
 
@@ -52,18 +54,17 @@ export default function SetupWizard() {
       return;
     }
 
-    // Auto-detect or default to trying all providers
     const provider = detectProvider(key);
 
     setIsVerifying(true);
     setError(null);
 
     if (provider) {
-      // Try the detected provider first
       try {
         const data = await listModels(provider, key);
         setApiKeys([{ provider, key }]);
         setActiveProvider(provider);
+        setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
         useAppStore.getState().setApiKey(key);
         setAppState('selectModel');
@@ -71,7 +72,6 @@ export default function SetupWizard() {
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
-        // If detected provider fails, try others
         const otherProviders = PROVIDER_INFO.filter((p) => p.id !== provider).map((p) => p.id);
         let found = false;
 
@@ -80,6 +80,7 @@ export default function SetupWizard() {
             const data = await listModels(tryProvider, key);
             setApiKeys([{ provider: tryProvider, key }]);
             setActiveProvider(tryProvider);
+            setIsUsingFreeKey(false);
             useAppStore.getState().setModels(data.models);
             useAppStore.getState().setApiKey(key);
             setAppState('selectModel');
@@ -101,7 +102,6 @@ export default function SetupWizard() {
       }
     }
 
-    // No provider detected - try all providers one by one
     setError(null);
     const tryOrder: ApiProvider[] = ['gemini', 'huggingface', 'nvidia', 'groq', 'together', 'openrouter', 'cohere', 'mistral'];
     let found = false;
@@ -112,6 +112,7 @@ export default function SetupWizard() {
         const data = await listModels(tryProvider, key);
         setApiKeys([{ provider: tryProvider, key }]);
         setActiveProvider(tryProvider);
+        setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
         useAppStore.getState().setApiKey(key);
         setAppState('selectModel');
@@ -143,6 +144,19 @@ export default function SetupWizard() {
         transition={{ duration: 0.6, ease: 'easeOut' }}
         className="w-full max-w-md relative"
       >
+        {/* Back button */}
+        {onBack && (
+          <motion.button
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            onClick={onBack}
+            className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
+          >
+            <ArrowRight className="w-4 h-4" />
+            العودة للمفاتيح المجانية
+          </motion.button>
+        )}
+
         {/* Logo / Title */}
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
@@ -151,10 +165,10 @@ export default function SetupWizard() {
           className="text-center mb-8"
         >
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25 mb-4">
-            <Sparkles className="w-10 h-10 text-white" />
+            <Key className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Alisha - مساعد AI</h1>
-          <p className="text-gray-400">أدخل مفتاح API وسيتعرف النظام تلقائياً على المزود</p>
+          <h1 className="text-3xl font-bold text-white mb-2">إدخال مفتاح API</h1>
+          <p className="text-gray-400">أدخل مفتاح API الخاص بك والنظام سيتعرف على المزود تلقائياً</p>
         </motion.div>
 
         {/* Card */}
@@ -166,7 +180,7 @@ export default function SetupWizard() {
         >
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <Key className="w-5 h-5 text-emerald-400" />
+              <Wand2 className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">مفتاح API</h2>
@@ -193,7 +207,7 @@ export default function SetupWizard() {
               >
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
-              <Wand2 className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400/50 w-4 h-4" />
+              <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400/50 w-4 h-4" />
             </div>
 
             {/* Auto-detection result */}
@@ -217,7 +231,7 @@ export default function SetupWizard() {
             )}
 
             {/* Error */}
-            {error && (
+            {error && !error.includes('جاري تجربة') && (
               <motion.div
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -226,6 +240,14 @@ export default function SetupWizard() {
                 <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-red-400">{error}</p>
               </motion.div>
+            )}
+
+            {/* Trying providers indicator */}
+            {error && error.includes('جاري تجربة') && (
+              <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+                <p className="text-sm text-amber-400">{error}</p>
+              </div>
             )}
 
             {/* Verify button */}

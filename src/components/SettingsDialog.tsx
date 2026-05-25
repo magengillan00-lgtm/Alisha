@@ -19,8 +19,9 @@ import {
   Layers,
   Key,
 } from 'lucide-react';
-import { useAppStore, type ResponseLanguage, type MemoryItem } from '@/store/useAppStore';
-import { PROVIDER_INFO } from '@/lib/gemini-client';
+import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider } from '@/store/useAppStore';
+import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
+import { Loader2, Eye, EyeOff, Check, AlertTriangle } from 'lucide-react';
 
 // ============ BACKGROUNDS DATA ============
 
@@ -276,7 +277,23 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
     messages,
     activeProvider,
     apiKeys,
+    setApiKeys,
+    setActiveProvider,
+    setIsUsingFreeKey,
+    isUsingFreeKey,
+    selectedFreeKey,
+    freeKeys,
+    setFreeKeys,
+    setSelectedFreeKey,
   } = useAppStore();
+
+  // Manual key entry state
+  const [manualKeyInput, setManualKeyInput] = useState('');
+  const [manualKeyProvider, setManualKeyProvider] = useState<ApiProvider>('gemini');
+  const [showManualKey, setShowManualKey] = useState(false);
+  const [isAddingKey, setIsAddingKey] = useState(false);
+  const [addKeyError, setAddKeyError] = useState<string | null>(null);
+  const [addKeySuccess, setAddKeySuccess] = useState(false);
 
   const [tempLanguage, setTempLanguage] = useState(responseLanguage);
   const [tempBackground, setTempBackground] = useState(selectedBackground);
@@ -316,7 +333,7 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
 
   const handleReset = () => {
     clearMessages();
-    setAppState('setup');
+    setAppState('freeKeys');
     onClose();
   };
 
@@ -566,12 +583,32 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                 )}
               </SettingSection>
 
+              {/* ===== Current Free Key ===== */}
+              {isUsingFreeKey && selectedFreeKey && (
+                <div className="bg-emerald-500/5 rounded-2xl border border-emerald-500/20 px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{selectedFreeKey.category === 'GPT' ? '🧠' : selectedFreeKey.category === 'Claude' ? '🎭' : '🔑'}</span>
+                    <p className="text-sm text-emerald-300 font-medium">مفتاح مجاني نشط</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-400">الفئة: {selectedFreeKey.category}</p>
+                    <p className="text-xs text-gray-400">الموديل: <span dir="ltr">{selectedFreeKey.model}</span></p>
+                    <p className="text-xs text-gray-400">الميزانية: {selectedFreeKey.budget}</p>
+                    <p className="text-xs text-gray-400">ينتهي: {selectedFreeKey.expires}</p>
+                  </div>
+                  <p className="text-[10px] text-gray-600 mt-2">
+                    المفاتيح المجانية متاحة ({freeKeys.length}) · يتم التبديل تلقائياً عند نفاد الحصة
+                  </p>
+                </div>
+              )}
+
               {/* ===== API Keys ===== */}
-              <SettingSection icon={<Key className="w-4 h-4" />} label="مفاتيح API" defaultOpen={false}>
-                <div className="space-y-1.5">
+              <SettingSection icon={<Key className="w-4 h-4" />} label="مفاتيح API اليدوية" defaultOpen={false}>
+                <div className="space-y-2">
+                  {/* Existing keys */}
                   {PROVIDER_INFO.map((p) => {
                     const hasKey = apiKeys.some((k) => k.provider === p.id && k.key);
-                    const isActive = activeProvider === p.id;
+                    const isActive = activeProvider === p.id && !isUsingFreeKey;
                     return (
                       <div key={p.id} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2 border border-white/[0.06]">
                         <span className="text-base">{p.icon}</span>
@@ -587,9 +624,101 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                       </div>
                     );
                   })}
-                  <p className="text-[10px] text-gray-600 mt-1">
-                    لإضافة أو تغيير المفاتيح، قم بتسجيل الخروج
-                  </p>
+
+                  {/* Add new key */}
+                  {!showManualKey ? (
+                    <button
+                      onClick={() => setShowManualKey(true)}
+                      className="w-full py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      إضافة مفتاح جديد
+                    </button>
+                  ) : (
+                    <div className="space-y-2 bg-white/5 rounded-xl p-3 border border-white/[0.06]">
+                      {/* Provider select */}
+                      <select
+                        value={manualKeyProvider}
+                        onChange={(e) => setManualKeyProvider(e.target.value as ApiProvider)}
+                        className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                      >
+                        {PROVIDER_INFO.map((p) => (
+                          <option key={p.id} value={p.id} className="bg-gray-900">
+                            {p.icon} {p.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Key input */}
+                      <div className="relative">
+                        <input
+                          type={showManualKey ? 'text' : 'password'}
+                          value={manualKeyInput}
+                          onChange={(e) => { setManualKeyInput(e.target.value); setAddKeyError(null); setAddKeySuccess(false); }}
+                          placeholder="الصق المفتاح هنا..."
+                          className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                          dir="ltr"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowManualKey(!showManualKey)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                        >
+                          {showManualKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </button>
+                      </div>
+
+                      {/* Error */}
+                      {addKeyError && (
+                        <div className="flex items-start gap-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                          <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
+                          <p className="text-[10px] text-red-400">{addKeyError}</p>
+                        </div>
+                      )}
+
+                      {/* Success */}
+                      {addKeySuccess && (
+                        <div className="flex items-center gap-1.5 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <p className="text-[10px] text-emerald-400">تمت إضافة المفتاح بنجاح</p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setShowManualKey(false); setManualKeyInput(''); setAddKeyError(null); }}
+                          className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/[0.06] text-gray-400 text-[10px] hover:bg-white/10 transition-all"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!manualKeyInput.trim()) { setAddKeyError('يرجى إدخال المفتاح'); return; }
+                            setIsAddingKey(true);
+                            setAddKeyError(null);
+                            try {
+                              const data = await listModels(manualKeyProvider, manualKeyInput.trim());
+                              useAppStore.getState().addApiKey({ provider: manualKeyProvider, key: manualKeyInput.trim() });
+                              setAddKeySuccess(true);
+                              setManualKeyInput('');
+                              setTimeout(() => setAddKeySuccess(false), 2000);
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
+                              setAddKeyError(msg);
+                            } finally {
+                              setIsAddingKey(false);
+                            }
+                          }}
+                          disabled={isAddingKey || !manualKeyInput.trim()}
+                          className="flex-1 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/30 disabled:opacity-30 transition-all flex items-center justify-center gap-1"
+                        >
+                          {isAddingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          {isAddingKey ? 'جاري التحقق...' : 'إضافة وتحقق'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </SettingSection>
 

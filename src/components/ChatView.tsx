@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
 import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
+import { sendFreeKeyMessage } from '@/lib/free-keys';
 import SettingsDialog from '@/components/SettingsDialog';
 
 const Live2DViewer = dynamic(() => import('@/components/Live2DViewer'), {
@@ -43,6 +44,11 @@ export default function ChatView() {
     activeProvider,
     apiKeys,
     permanentMemory,
+    selectedFreeKey,
+    isUsingFreeKey,
+    markKeyExhausted,
+    switchToNextAvailableKey,
+    setSelectedModel,
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
@@ -53,15 +59,15 @@ export default function ChatView() {
   const [showTextInput, setShowTextInput] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
 
   const recognitionRef = useRef<unknown>(null);
 
   // Initialize TTS and voices on mount
   useEffect(() => {
     initVoices();
-    initTTS(); // Auto-detect best TTS method
+    initTTS();
 
-    // Unlock audio and warm up speech synthesis on first user interaction
     const handleFirstInteraction = () => {
       unlockAudio();
       warmupSpeech();
@@ -88,7 +94,6 @@ export default function ChatView() {
     }
 
     vv.addEventListener('resize', handleResize);
-    // Also listen for focus events on inputs
     window.addEventListener('resize', handleResize);
 
     return () => {
@@ -97,6 +102,14 @@ export default function ChatView() {
     };
   }, []);
 
+  // Auto-dismiss key switch notice
+  useEffect(() => {
+    if (keySwitchNotice) {
+      const timer = setTimeout(() => setKeySwitchNotice(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [keySwitchNotice]);
+
   const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
 
   // Get the active API key
@@ -104,6 +117,42 @@ export default function ChatView() {
     const keyEntry = apiKeys.find((k) => k.provider === activeProvider);
     return keyEntry?.key || apiKey;
   }, [apiKeys, activeProvider, apiKey]);
+
+  // Build system prompt
+  const buildSystemPrompt = useCallback(() => {
+    const LANG_INSTRUCTIONS: Record<string, string> = {
+      ar: `أنت مساعد صوتي ذكي مع أفاتار Live2D.
+- أجب دائماً باللغة العربية فقط، بغض النظر عن لغة سؤال المستخدم.
+- كن ودوداً وطبيعياً كأنك تتحدث مع صديق.
+- أجب بإيجاز ومناسب للمحادثة الصوتية (جمل قصيرة).
+- لا تستخدم Markdown أو رموز خاصة في الرد.
+- تجنب القوائم المرقمة والنقاط، استخدم جمل عادية.`,
+      en: `You are a smart voice assistant with a Live2D avatar.
+- Always respond in English only, regardless of the user's input language.
+- Be friendly and natural, like talking to a friend.
+- Keep responses concise and suitable for voice conversation (short sentences).
+- Do not use Markdown or special symbols in your response.
+- Avoid numbered lists and bullet points, use normal sentences.`,
+      ja: `あなたはLive2Dアバター付きのスマート音声アシスタントです。
+- ユーザーの入力言語に関係なく、常に日本語のみで応答してください。
+- 友達と話すように、親しみやすく自然に答えてください。
+- 音声会話に適した簡潔な回答（短い文）を心がけてください。
+- Markdownや特殊記号は使わないでください。
+- 番号付きリストや箇条書きは避け、普通の文を使ってください。`,
+    };
+
+    let prompt = LANG_INSTRUCTIONS[responseLanguage] || LANG_INSTRUCTIONS['ar'];
+
+    if (permanentMemory.length > 0) {
+      const memoryBlock = permanentMemory
+        .sort((a, b) => a.order - b.order)
+        .map((m) => `[${m.order}] ${m.content}`)
+        .join('\n');
+      prompt += `\n\n--- تعليمات مهمة من ملف الذاكرة الدائمة (يجب اتباعها دائماً) ---\n${memoryBlock}\n--- نهاية التعليمات ---`;
+    }
+
+    return prompt;
+  }, [responseLanguage, permanentMemory]);
 
   // --- Speech Recognition ---
   const startRecording = useCallback(() => {
@@ -139,7 +188,6 @@ export default function ChatView() {
     }
 
     recognitionRef.current = recognition;
-    // Unlock audio and warm up TTS during user gesture (before async operation)
     unlockAudio();
     warmupSpeech();
     recognition.start();
@@ -165,7 +213,6 @@ export default function ChatView() {
     if (isRecording) {
       stopRecording();
     } else {
-      // Stop any ongoing speech properly
       cancelSpeech();
       setAvatarState('idle');
       startRecording();
@@ -174,7 +221,7 @@ export default function ChatView() {
 
   // --- Send Message to AI ---
   const sendUserMessage = useCallback(
-    async (text: string) => {
+    async (text: string, retryCount = 0) => {
       if (!text.trim() || isLoading) return;
 
       const userMsg = {
@@ -189,7 +236,6 @@ export default function ChatView() {
       setIsLoading(true);
       setAvatarState('thinking');
 
-      // Hide keyboard when sending
       setShowTextInput(false);
 
       try {
@@ -198,47 +244,90 @@ export default function ChatView() {
           { role: 'user' as const, content: text.trim() },
         ];
 
-        const activeKey = getActiveApiKey();
-        const data = await sendMessage(
-          activeProvider,
-          activeKey,
-          selectedModel,
-          chatMessages,
-          responseLanguage,
-          permanentMemory
-        );
+        let responseText: string;
 
-        // Store in history but don't display
+        if (isUsingFreeKey && selectedFreeKey) {
+          // Use free key API
+          try {
+            const systemPrompt = buildSystemPrompt();
+            responseText = await sendFreeKeyMessage(
+              selectedFreeKey,
+              selectedModel,
+              chatMessages,
+              systemPrompt
+            );
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : '';
+            
+            if (errorMsg === 'RATE_LIMITED' || errorMsg === 'KEY_EXPIRED') {
+              if (retryCount < 5) {
+                // Mark current key as exhausted
+                markKeyExhausted(selectedFreeKey.id);
+                
+                // Try switching to next available key
+                const nextKey = switchToNextAvailableKey();
+                
+                if (nextKey) {
+                  setKeySwitchNotice(`تم التبديل إلى مفتاح: ${nextKey.category} - ${nextKey.model}`);
+                  
+                  // If the model changed, update it
+                  if (nextKey.model !== selectedModel) {
+                    setSelectedModel(nextKey.model);
+                  }
+                  
+                  // Retry with new key (remove the user message we just added, it'll be re-added)
+                  setIsLoading(false);
+                  setAvatarState('idle');
+                  // Retry
+                  setTimeout(() => sendUserMessage(text, retryCount + 1), 500);
+                  return;
+                } else {
+                  throw new Error('تم نفاد جميع المفاتيح المتاحة. حاول مرة أخرى لاحقاً أو أدخل مفتاحك يدوياً من الإعدادات.');
+                }
+              } else {
+                throw new Error('تم تجاوز عدد المحاولات. حاول مرة أخرى لاحقاً.');
+              }
+            }
+            throw err;
+          }
+        } else {
+          // Use manual API key
+          const activeKey = getActiveApiKey();
+          const data = await sendMessage(
+            activeProvider,
+            activeKey,
+            selectedModel,
+            chatMessages,
+            responseLanguage,
+            permanentMemory
+          );
+          responseText = data.text;
+        }
+
         const assistantMsg = {
           id: (Date.now() + 1).toString(),
           role: 'assistant' as const,
-          content: data.text,
+          content: responseText,
           timestamp: Date.now(),
         };
         addMessage(assistantMsg);
-        // Keep 'thinking' state until speech actually starts playing
-        // This ensures lip sync is synchronized with audio
 
-        // Speak the response (voice only - no text shown)
+        // Speak the response
         if (!muted) {
           const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
-          // Small delay to ensure UI is ready
           setTimeout(() => {
             speakText(
-              data.text,
+              responseText,
               speechLang,
               () => {
-                // Speech ended - return to idle
                 setAvatarState('idle');
               },
               () => {
-                // Speech ACTUALLY started playing audio - now animate mouth
                 setAvatarState('speaking');
               }
             );
           }, 200);
         } else {
-          // Muted - skip speaking, go idle after brief delay
           setTimeout(() => setAvatarState('idle'), 1000);
         }
       } catch (err) {
@@ -249,7 +338,7 @@ export default function ChatView() {
         setIsLoading(false);
       }
     },
-    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, muted, addMessage, setIsLoading, setError, setAvatarState, permanentMemory]
+    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, muted, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, isUsingFreeKey, selectedFreeKey, markKeyExhausted, switchToNextAvailableKey, setSelectedModel, buildSystemPrompt]
   );
 
   const handleTextSubmit = useCallback(
@@ -277,11 +366,10 @@ export default function ChatView() {
     }
   }, [muted, setAvatarState]);
 
-  // When keyboard is visible, show compact layout (no avatar, just input)
+  // When keyboard is visible, show compact layout
   if (keyboardVisible && showTextInput) {
     return (
       <div className="h-[100dvh] flex flex-col bg-gray-950">
-        {/* Minimal top bar */}
         <div className="flex items-center justify-between px-4 py-2 bg-black/30 border-b border-white/10">
           <p className="text-xs text-gray-400 truncate">{selectedModel}</p>
           <button
@@ -292,7 +380,6 @@ export default function ChatView() {
           </button>
         </div>
 
-        {/* Compact message area */}
         <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3">
           {avatarState === 'thinking' && (
             <div className="w-10 h-10 border-3 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
@@ -304,7 +391,6 @@ export default function ChatView() {
           )}
         </div>
 
-        {/* Input area - stays above keyboard */}
         <div className="bg-gray-950/95 border-t border-white/10 px-3 py-2 pb-3">
           <form onSubmit={handleTextSubmit} className="flex gap-2">
             <input
@@ -370,6 +456,9 @@ export default function ChatView() {
             <h1 className="text-sm font-semibold text-white" dir="ltr">{selectedModel}</h1>
             <p className="text-xs text-gray-500">
               {responseLanguage === 'ar' ? 'عربي' : responseLanguage === 'en' ? 'English' : '日本語'}
+              {isUsingFreeKey && selectedFreeKey && (
+                <span className="text-emerald-500"> · {selectedFreeKey.category}</span>
+              )}
             </p>
           </div>
         </div>
@@ -398,6 +487,18 @@ export default function ChatView() {
         </div>
       </header>
 
+      {/* Key switch notice */}
+      {keySwitchNotice && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="relative z-20 bg-amber-500/20 border-b border-amber-500/30 px-4 py-2"
+        >
+          <p className="text-xs text-amber-300 text-center">{keySwitchNotice}</p>
+        </motion.div>
+      )}
+
       {/* Main content - Full screen avatar */}
       <div className="flex-1 relative z-10 overflow-hidden min-h-0">
         {/* Avatar - Center stage */}
@@ -407,7 +508,7 @@ export default function ChatView() {
           </div>
         </div>
 
-        {/* Status overlay - shows what user said briefly */}
+        {/* Status overlay */}
         <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none">
           {lastUserText && avatarState !== 'idle' && (
             <motion.div
@@ -436,7 +537,6 @@ export default function ChatView() {
 
         {/* Bottom controls */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-950/90 via-gray-950/50 to-transparent">
-          {/* Text input (toggle) */}
           {showTextInput && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -477,10 +577,8 @@ export default function ChatView() {
             </motion.div>
           )}
 
-          {/* Main control buttons */}
           {!showTextInput && (
             <div className="flex items-center justify-center gap-6">
-              {/* Stop speaking */}
               {avatarState === 'speaking' && (
                 <motion.button
                   initial={{ scale: 0 }}
@@ -493,7 +591,6 @@ export default function ChatView() {
                 </motion.button>
               )}
 
-              {/* Mic button - main CTA */}
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={toggleRecording}
@@ -514,7 +611,6 @@ export default function ChatView() {
                 )}
               </motion.button>
 
-              {/* Keyboard toggle */}
               {!isLoading && avatarState === 'idle' && (
                 <motion.button
                   initial={{ scale: 0 }}
@@ -531,7 +627,6 @@ export default function ChatView() {
         </div>
       </div>
 
-      {/* Settings dialog */}
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
