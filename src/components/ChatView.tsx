@@ -29,7 +29,6 @@ const Live2DViewer = dynamic(() => import('@/components/Live2DViewer'), {
 
 export default function ChatView() {
   const {
-    apiKey,
     selectedModel,
     responseLanguage,
     avatarState,
@@ -54,12 +53,12 @@ export default function ChatView() {
   const [textInput, setTextInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [interimText, setInterimText] = useState('');
-  const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
 
@@ -115,8 +114,8 @@ export default function ChatView() {
   // Get the active API key
   const getActiveApiKey = useCallback(() => {
     const keyEntry = apiKeys.find((k) => k.provider === activeProvider);
-    return keyEntry?.key || apiKey;
-  }, [apiKeys, activeProvider, apiKey]);
+    return keyEntry?.key || '';
+  }, [apiKeys, activeProvider]);
 
   // Build system prompt
   const buildSystemPrompt = useCallback(() => {
@@ -214,6 +213,7 @@ export default function ChatView() {
       stopRecording();
     } else {
       cancelSpeech();
+      setIsSpeaking(false);
       setAvatarState('idle');
       startRecording();
     }
@@ -221,21 +221,27 @@ export default function ChatView() {
 
   // --- Send Message to AI ---
   const sendUserMessage = useCallback(
-    async (text: string, retryCount = 0) => {
+    async (text: string, retryCount = 0, isRetry = false) => {
       if (!text.trim() || isLoading) return;
 
-      const userMsg = {
-        id: Date.now().toString(),
-        role: 'user' as const,
-        content: text.trim(),
-        timestamp: Date.now(),
-      };
-      addMessage(userMsg);
+      // Only add user message if this is not a retry (fix duplicate message bug)
+      if (!isRetry) {
+        const userMsg = {
+          id: Date.now().toString(),
+          role: 'user' as const,
+          content: text.trim(),
+          timestamp: Date.now(),
+        };
+        addMessage(userMsg);
+      }
       setTextInput('');
       setLastUserText(text.trim());
       setIsLoading(true);
       setAvatarState('thinking');
 
+      // Stop any current speech
+      cancelSpeech();
+      setIsSpeaking(false);
       setShowTextInput(false);
 
       try {
@@ -275,11 +281,10 @@ export default function ChatView() {
                     setSelectedModel(nextKey.model);
                   }
                   
-                  // Retry with new key (remove the user message we just added, it'll be re-added)
+                  // Retry with new key (isRetry = true to avoid duplicate user message)
                   setIsLoading(false);
                   setAvatarState('idle');
-                  // Retry
-                  setTimeout(() => sendUserMessage(text, retryCount + 1), 500);
+                  setTimeout(() => sendUserMessage(text, retryCount + 1, true), 500);
                   return;
                 } else {
                   throw new Error('تم نفاد جميع المفاتيح المتاحة. حاول مرة أخرى لاحقاً أو أدخل مفتاحك يدوياً من الإعدادات.');
@@ -293,6 +298,9 @@ export default function ChatView() {
         } else {
           // Use manual API key
           const activeKey = getActiveApiKey();
+          if (!activeKey) {
+            throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
+          }
           const data = await sendMessage(
             activeProvider,
             activeKey,
@@ -312,24 +320,22 @@ export default function ChatView() {
         };
         addMessage(assistantMsg);
 
-        // Speak the response
-        if (!muted) {
-          const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
-          setTimeout(() => {
-            speakText(
-              responseText,
-              speechLang,
-              () => {
-                setAvatarState('idle');
-              },
-              () => {
-                setAvatarState('speaking');
-              }
-            );
-          }, 200);
-        } else {
-          setTimeout(() => setAvatarState('idle'), 1000);
-        }
+        // Always speak the response (voice-only mode)
+        const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
+        setTimeout(() => {
+          speakText(
+            responseText,
+            speechLang,
+            () => {
+              setIsSpeaking(false);
+              setAvatarState('idle');
+            },
+            () => {
+              setIsSpeaking(true);
+              setAvatarState('speaking');
+            }
+          );
+        }, 200);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
         setError(errorMsg);
@@ -338,7 +344,7 @@ export default function ChatView() {
         setIsLoading(false);
       }
     },
-    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, muted, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, isUsingFreeKey, selectedFreeKey, markKeyExhausted, switchToNextAvailableKey, setSelectedModel, buildSystemPrompt]
+    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, isUsingFreeKey, selectedFreeKey, markKeyExhausted, switchToNextAvailableKey, setSelectedModel, buildSystemPrompt]
   );
 
   const handleTextSubmit = useCallback(
@@ -353,18 +359,9 @@ export default function ChatView() {
 
   const stopSpeaking = useCallback(() => {
     cancelSpeech();
+    setIsSpeaking(false);
     setAvatarState('idle');
   }, [setAvatarState]);
-
-  const toggleMute = useCallback(() => {
-    if (muted) {
-      setMuted(false);
-    } else {
-      cancelSpeech();
-      setMuted(true);
-      setAvatarState('idle');
-    }
-  }, [muted, setAvatarState]);
 
   // When keyboard is visible, show compact layout
   if (keyboardVisible && showTextInput) {
@@ -421,7 +418,6 @@ export default function ChatView() {
         <SettingsDialog
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
-          onModelChange={() => setAppState('selectModel')}
         />
       </div>
     );
@@ -464,11 +460,15 @@ export default function ChatView() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={toggleMute}
+            onClick={stopSpeaking}
             className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-            title={muted ? 'تشغيل الصوت' : 'كتم الصوت'}
+            title="إيقاف الصوت"
           >
-            {muted ? <VolumeX className="w-4 h-4 text-gray-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+            {isSpeaking ? (
+              <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-gray-400" />
+            )}
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
@@ -579,7 +579,7 @@ export default function ChatView() {
 
           {!showTextInput && (
             <div className="flex items-center justify-center gap-6">
-              {avatarState === 'speaking' && (
+              {isSpeaking && (
                 <motion.button
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -611,7 +611,7 @@ export default function ChatView() {
                 )}
               </motion.button>
 
-              {!isLoading && avatarState === 'idle' && (
+              {!isLoading && avatarState === 'idle' && !isSpeaking && (
                 <motion.button
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -630,7 +630,6 @@ export default function ChatView() {
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onModelChange={() => setAppState('selectModel')}
       />
     </div>
   );

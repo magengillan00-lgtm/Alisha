@@ -13,7 +13,6 @@ export default function ModelSelector() {
     selectedModel,
     setSelectedModel,
     setAppState,
-    setApiKey,
     clearMessages,
     activeProvider,
     apiKeys,
@@ -45,7 +44,6 @@ export default function ModelSelector() {
   };
 
   const handleBack = () => {
-    setApiKey('');
     setSelectedModel('');
     setAppState('freeKeys');
   };

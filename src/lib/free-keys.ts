@@ -233,6 +233,72 @@ export async function fetchFreeKeyModels(key: FreeKey): Promise<string[]> {
 }
 
 /**
+ * Verify that a key and model combination works by sending a minimal test request.
+ * Returns { success: boolean, error?: string }
+ */
+export async function verifyKeyModel(key: FreeKey, model: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${key.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key.key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 5,
+      }),
+    });
+
+    if (response.ok) {
+      return { success: true };
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+    const errorMsg = errorData?.error?.message || '';
+
+    if (response.status === 429) {
+      return { success: false, error: 'تم تجاوز حد الطلبات - المفتاح محدود السرعة' };
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { success: false, error: 'المفتاح منتهي الصلاحية أو غير صالح' };
+    }
+    if (response.status === 404) {
+      return { success: false, error: 'الموديل غير متاح مع هذا المفتاح' };
+    }
+    return { success: false, error: errorMsg || `خطأ HTTP: ${response.status}` };
+  } catch (err) {
+    return { success: false, error: 'فشل الاتصال - تحقق من الإنترنت' };
+  }
+}
+
+/**
+ * Verify that a manual API key and model combination works.
+ * Returns { success: boolean, error?: string }
+ */
+export async function verifyManualKeyModel(
+  provider: string,
+  apiKey: string,
+  model: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { PROVIDERS } = await import('@/lib/gemini-client');
+    const p = PROVIDERS[provider as keyof typeof PROVIDERS];
+    if (!p) return { success: false, error: 'مزود غير معروف' };
+
+    const works = await p.testModel(apiKey, model);
+    if (works) {
+      return { success: true };
+    }
+    return { success: false, error: 'الموديل لا يعمل مع هذا المفتاح' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'فشل التحقق';
+    return { success: false, error: msg };
+  }
+}
+
+/**
  * Send a chat message using a free key (OpenAI-compatible format)
  */
 export async function sendFreeKeyMessage(

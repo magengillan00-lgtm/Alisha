@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type AppState = 'freeKeys' | 'selectModel' | 'chat';
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -81,10 +82,6 @@ interface AppStore {
   activeProvider: ApiProvider;
   setActiveProvider: (provider: ApiProvider) => void;
 
-  // Legacy support - kept for backward compatibility
-  apiKey: string;
-  setApiKey: (key: string) => void;
-
   // Models
   models: string[];
   setModels: (models: string[]) => void;
@@ -122,112 +119,149 @@ interface AppStore {
   // Error
   error: string | null;
   setError: (error: string | null) => void;
+
+  // Hydration flag
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
 }
 
-export const useAppStore = create<AppStore>((set, get) => ({
-  appState: 'freeKeys',
-  setAppState: (appState) => set({ appState }),
+export const useAppStore = create<AppStore>()(
+  persist(
+    (set, get) => ({
+      appState: 'freeKeys',
+      setAppState: (appState) => set({ appState }),
 
-  // Free Keys
-  freeKeys: [],
-  setFreeKeys: (freeKeys) => set({ freeKeys }),
-  selectedFreeKey: null,
-  setSelectedFreeKey: (selectedFreeKey) => set({ selectedFreeKey }),
-  exhaustedKeyIds: [],
-  markKeyExhausted: (keyId) =>
-    set((state) => ({
-      exhaustedKeyIds: [...new Set([...state.exhaustedKeyIds, keyId])],
-    })),
-  switchToNextAvailableKey: () => {
-    const { freeKeys, exhaustedKeyIds, selectedFreeKey } = get();
-    const currentKeyIndex = selectedFreeKey
-      ? freeKeys.findIndex((k) => k.id === selectedFreeKey.id)
-      : -1;
+      // Free Keys
+      freeKeys: [],
+      setFreeKeys: (freeKeys) => set({ freeKeys }),
+      selectedFreeKey: null,
+      setSelectedFreeKey: (selectedFreeKey) => set({ selectedFreeKey }),
+      exhaustedKeyIds: [],
+      markKeyExhausted: (keyId) =>
+        set((state) => ({
+          exhaustedKeyIds: [...new Set([...state.exhaustedKeyIds, keyId])],
+        })),
+      switchToNextAvailableKey: () => {
+        const { freeKeys, exhaustedKeyIds, selectedFreeKey } = get();
+        const currentKeyIndex = selectedFreeKey
+          ? freeKeys.findIndex((k) => k.id === selectedFreeKey.id)
+          : -1;
 
-    // Try keys after current first
-    for (let i = currentKeyIndex + 1; i < freeKeys.length; i++) {
-      if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
-        set({ selectedFreeKey: freeKeys[i] });
-        return freeKeys[i];
-      }
-    }
+        // Try keys after current first
+        for (let i = currentKeyIndex + 1; i < freeKeys.length; i++) {
+          if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
+            set({ selectedFreeKey: freeKeys[i] });
+            return freeKeys[i];
+          }
+        }
 
-    // Then try keys before current
-    for (let i = 0; i < currentKeyIndex; i++) {
-      if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
-        set({ selectedFreeKey: freeKeys[i] });
-        return freeKeys[i];
-      }
-    }
+        // Then try keys before current
+        for (let i = 0; i < currentKeyIndex; i++) {
+          if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
+            set({ selectedFreeKey: freeKeys[i] });
+            return freeKeys[i];
+          }
+        }
 
-    // All keys exhausted
-    return null;
-  },
-  isUsingFreeKey: true,
-  setIsUsingFreeKey: (isUsingFreeKey) => set({ isUsingFreeKey }),
+        // All keys exhausted
+        return null;
+      },
+      isUsingFreeKey: true,
+      setIsUsingFreeKey: (isUsingFreeKey) => set({ isUsingFreeKey }),
 
-  // Multi-provider API keys (manual entry)
-  apiKeys: [],
-  setApiKeys: (apiKeys) => set({ apiKeys }),
-  addApiKey: (entry) =>
-    set((state) => {
-      const existing = state.apiKeys.filter((k) => k.provider !== entry.provider);
-      return { apiKeys: [...existing, entry] };
+      // Multi-provider API keys (manual entry)
+      apiKeys: [],
+      setApiKeys: (apiKeys) => set({ apiKeys }),
+      addApiKey: (entry) =>
+        set((state) => {
+          const existing = state.apiKeys.filter((k) => k.provider !== entry.provider);
+          return { apiKeys: [...existing, entry] };
+        }),
+      getApiKey: (provider) => {
+        const entry = get().apiKeys.find((k) => k.provider === provider);
+        return entry?.key || '';
+      },
+      activeProvider: 'gemini',
+      setActiveProvider: (activeProvider) => set({ activeProvider }),
+
+      models: [],
+      setModels: (models) => set({ models }),
+      selectedModel: '',
+      setSelectedModel: (selectedModel) => set({ selectedModel }),
+
+      messages: [],
+      addMessage: (message) =>
+        set((state) => ({ messages: [...state.messages, message] })),
+      clearMessages: () => set({ messages: [] }),
+
+      avatarState: 'idle',
+      setAvatarState: (avatarState) => set({ avatarState }),
+
+      responseLanguage: 'ar',
+      setResponseLanguage: (responseLanguage) => set({ responseLanguage }),
+
+      selectedBackground: '',
+      setSelectedBackground: (selectedBackground) => set({ selectedBackground }),
+
+      permanentMemory: DEFAULT_PERMANENT_MEMORY,
+      setPermanentMemory: (permanentMemory) => set({ permanentMemory }),
+      addPermanentMemory: (content) =>
+        set((state) => {
+          const maxOrder = state.permanentMemory.reduce((max, m) => Math.max(max, m.order), 0);
+          const newItem: MemoryItem = {
+            id: `mem-${Date.now()}`,
+            content,
+            order: maxOrder + 1,
+          };
+          return { permanentMemory: [...state.permanentMemory, newItem] };
+        }),
+      removePermanentMemory: (id) =>
+        set((state) => ({
+          permanentMemory: state.permanentMemory.filter((m) => m.id !== id).map((m, i) => ({ ...m, order: i + 1 })),
+        })),
+      updatePermanentMemory: (id, content) =>
+        set((state) => ({
+          permanentMemory: state.permanentMemory.map((m) => (m.id === id ? { ...m, content } : m)),
+        })),
+
+      isLoading: false,
+      setIsLoading: (isLoading) => set({ isLoading }),
+
+      error: null,
+      setError: (error) => set({ error }),
+
+      _hasHydrated: false,
+      setHasHydrated: (_hasHydrated) => set({ _hasHydrated }),
     }),
-  getApiKey: (provider) => {
-    const entry = get().apiKeys.find((k) => k.provider === provider);
-    return entry?.key || '';
-  },
-  activeProvider: 'gemini',
-  setActiveProvider: (activeProvider) => set({ activeProvider }),
-
-  // Legacy
-  apiKey: '',
-  setApiKey: (apiKey) => set({ apiKey }),
-
-  models: [],
-  setModels: (models) => set({ models }),
-  selectedModel: '',
-  setSelectedModel: (selectedModel) => set({ selectedModel }),
-
-  messages: [],
-  addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
-  clearMessages: () => set({ messages: [] }),
-
-  avatarState: 'idle',
-  setAvatarState: (avatarState) => set({ avatarState }),
-
-  responseLanguage: 'ar',
-  setResponseLanguage: (responseLanguage) => set({ responseLanguage }),
-
-  selectedBackground: '',
-  setSelectedBackground: (selectedBackground) => set({ selectedBackground }),
-
-  permanentMemory: DEFAULT_PERMANENT_MEMORY,
-  setPermanentMemory: (permanentMemory) => set({ permanentMemory }),
-  addPermanentMemory: (content) =>
-    set((state) => {
-      const maxOrder = state.permanentMemory.reduce((max, m) => Math.max(max, m.order), 0);
-      const newItem: MemoryItem = {
-        id: `mem-${Date.now()}`,
-        content,
-        order: maxOrder + 1,
-      };
-      return { permanentMemory: [...state.permanentMemory, newItem] };
-    }),
-  removePermanentMemory: (id) =>
-    set((state) => ({
-      permanentMemory: state.permanentMemory.filter((m) => m.id !== id).map((m, i) => ({ ...m, order: i + 1 })),
-    })),
-  updatePermanentMemory: (id, content) =>
-    set((state) => ({
-      permanentMemory: state.permanentMemory.map((m) => (m.id === id ? { ...m, content } : m)),
-    })),
-
-  isLoading: false,
-  setIsLoading: (isLoading) => set({ isLoading }),
-
-  error: null,
-  setError: (error) => set({ error }),
-}));
+    {
+      name: 'alisha-store',
+      partialize: (state) => ({
+        apiKeys: state.apiKeys,
+        selectedFreeKey: state.selectedFreeKey,
+        isUsingFreeKey: state.isUsingFreeKey,
+        activeProvider: state.activeProvider,
+        selectedModel: state.selectedModel,
+        selectedBackground: state.selectedBackground,
+        responseLanguage: state.responseLanguage,
+        permanentMemory: state.permanentMemory,
+        freeKeys: state.freeKeys,
+        exhaustedKeyIds: state.exhaustedKeyIds,
+        models: state.models,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state._hasHydrated = true;
+          // Determine initial app state based on persisted data
+          const hasKey = state.isUsingFreeKey
+            ? !!state.selectedFreeKey
+            : state.apiKeys.length > 0;
+          if (hasKey && state.selectedModel) {
+            state.appState = 'chat';
+          } else {
+            state.appState = 'freeKeys';
+          }
+        }
+      },
+    }
+  )
+);

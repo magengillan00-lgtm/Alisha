@@ -66,7 +66,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
         setActiveProvider(provider);
         setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
-        useAppStore.getState().setApiKey(key);
         setAppState('selectModel');
         setIsVerifying(false);
         return;
@@ -82,7 +81,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
             setActiveProvider(tryProvider);
             setIsUsingFreeKey(false);
             useAppStore.getState().setModels(data.models);
-            useAppStore.getState().setApiKey(key);
             setAppState('selectModel');
             found = true;
             break;
@@ -114,7 +112,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
         setActiveProvider(tryProvider);
         setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
-        useAppStore.getState().setApiKey(key);
         setAppState('selectModel');
         found = true;
         break;

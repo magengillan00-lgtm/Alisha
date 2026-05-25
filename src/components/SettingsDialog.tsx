@@ -18,10 +18,17 @@ import {
   Image as ImageIcon,
   Layers,
   Key,
+  Check,
+  AlertTriangle,
+  Loader2,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Zap,
 } from 'lucide-react';
-import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider } from '@/store/useAppStore';
+import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type FreeKey } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
-import { Loader2, Eye, EyeOff, Check, AlertTriangle } from 'lucide-react';
+import { fetchFreeKeys, fetchFreeKeyModels, verifyKeyModel, verifyManualKeyModel, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
 
 // ============ BACKGROUNDS DATA ============
 
@@ -122,15 +129,11 @@ function MemoryEditor({
   onUpdate,
   onAdd,
   onRemove,
-  title,
-  icon,
 }: {
   memory: MemoryItem[];
   onUpdate: (id: string, content: string) => void;
   onAdd: (content: string) => void;
   onRemove: (id: string) => void;
-  title: string;
-  icon: React.ReactNode;
 }) {
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,7 +144,6 @@ function MemoryEditor({
     if (newItem.trim()) {
       onAdd(newItem.trim());
       setNewItem('');
-      // Scroll to bottom
       setTimeout(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -167,7 +169,6 @@ function MemoryEditor({
 
   return (
     <div className="space-y-2">
-      {/* Memory items */}
       <div ref={scrollRef} className="max-h-48 overflow-y-auto custom-scrollbar space-y-1.5">
         {sortedMemory.map((item) => (
           <div
@@ -228,7 +229,6 @@ function MemoryEditor({
         )}
       </div>
 
-      {/* Add new item */}
       <div className="flex gap-1.5">
         <input
           type="text"
@@ -255,10 +255,9 @@ function MemoryEditor({
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
-  onModelChange: () => void;
 }
 
-export default function SettingsDialog({ open, onClose, onModelChange }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const {
     selectedModel,
     responseLanguage,
@@ -270,9 +269,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
     clearMessages,
     models,
     permanentMemory,
-    addPermanentMemory,
-    removePermanentMemory,
-    updatePermanentMemory,
     setPermanentMemory,
     messages,
     activeProvider,
@@ -285,19 +281,36 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
     freeKeys,
     setFreeKeys,
     setSelectedFreeKey,
+    setModels,
+    exhaustedKeyIds,
   } = useAppStore();
 
+  // Key section state
+  const [showKeySection, setShowKeySection] = useState(false);
+  const [showFreeKeysList, setShowFreeKeysList] = useState(false);
+  const [isLoadingFreeKeys, setIsLoadingFreeKeys] = useState(false);
+  const [switchingKeyId, setSwitchingKeyId] = useState<string | null>(null);
+
   // Manual key entry state
+  const [showManualKeyForm, setShowManualKeyForm] = useState(false);
   const [manualKeyInput, setManualKeyInput] = useState('');
   const [manualKeyProvider, setManualKeyProvider] = useState<ApiProvider>('gemini');
-  const [showManualKey, setShowManualKey] = useState(false);
+  const [showKeyPassword, setShowKeyPassword] = useState(false);
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [addKeyError, setAddKeyError] = useState<string | null>(null);
   const [addKeySuccess, setAddKeySuccess] = useState(false);
 
+  // Model section state
+  const [showModelSection, setShowModelSection] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
+
+  // Verify state
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ success: boolean; error?: string } | null>(null);
+
+  // General settings
   const [tempLanguage, setTempLanguage] = useState(responseLanguage);
   const [tempBackground, setTempBackground] = useState(selectedBackground);
-  const [showModelSelect, setShowModelSelect] = useState(false);
   const [showBgPopup, setShowBgPopup] = useState(false);
   const [tempMemory, setTempMemory] = useState<MemoryItem[]>(permanentMemory);
 
@@ -312,22 +325,26 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
     setTempMemory(permanentMemory);
   }, [permanentMemory]);
 
+  // Sync temp values when settings open
+  useEffect(() => {
+    if (open) {
+      setTempLanguage(responseLanguage);
+      setTempBackground(selectedBackground);
+      setTempMemory(permanentMemory);
+      setVerifyResult(null);
+    }
+  }, [open, responseLanguage, selectedBackground, permanentMemory]);
+
   const handleSave = () => {
-    // Language change
     if (tempLanguage !== responseLanguage) {
       setResponseLanguage(tempLanguage);
     }
-
-    // Background change
     if (tempBackground !== selectedBackground) {
       setSelectedBackground(tempBackground);
     }
-
-    // Memory change
     if (JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory)) {
       setPermanentMemory(tempMemory);
     }
-
     onClose();
   };
 
@@ -359,6 +376,109 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
       prev.map((m) => (m.id === id ? { ...m, content } : m))
     );
   };
+
+  // Load free keys
+  const loadFreeKeys = async () => {
+    setIsLoadingFreeKeys(true);
+    try {
+      const keys = await fetchFreeKeys();
+      setFreeKeys(keys);
+    } catch {
+      // keep existing keys
+    } finally {
+      setIsLoadingFreeKeys(false);
+    }
+  };
+
+  // Switch to a different free key
+  const handleSwitchToFreeKey = async (key: FreeKey) => {
+    setSwitchingKeyId(key.id);
+    try {
+      const newModels = await fetchFreeKeyModels(key);
+      setSelectedFreeKey(key);
+      setIsUsingFreeKey(true);
+      setModels(newModels);
+      // Auto-select the key's default model
+      setSelectedModel(key.model);
+      clearMessages();
+      setShowFreeKeysList(false);
+      setShowKeySection(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'فشل في جلب الموديلات';
+      setAddKeyError(msg);
+    } finally {
+      setSwitchingKeyId(null);
+    }
+  };
+
+  // Add manual key
+  const handleAddManualKey = async () => {
+    if (!manualKeyInput.trim()) { setAddKeyError('يرجى إدخال المفتاح'); return; }
+    setIsAddingKey(true);
+    setAddKeyError(null);
+    try {
+      const data = await listModels(manualKeyProvider, manualKeyInput.trim());
+      useAppStore.getState().addApiKey({ provider: manualKeyProvider, key: manualKeyInput.trim() });
+      setActiveProvider(manualKeyProvider);
+      setIsUsingFreeKey(false);
+      setModels(data.models);
+      if (data.models.length > 0) {
+        setSelectedModel(data.models[0]);
+      }
+      setAddKeySuccess(true);
+      setManualKeyInput('');
+      clearMessages();
+      setTimeout(() => setAddKeySuccess(false), 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
+      setAddKeyError(msg);
+    } finally {
+      setIsAddingKey(false);
+    }
+  };
+
+  // Switch to manual key
+  const handleSwitchToManualKey = (provider: ApiProvider, key: string) => {
+    setActiveProvider(provider);
+    setIsUsingFreeKey(false);
+    clearMessages();
+    setShowKeySection(false);
+  };
+
+  // Verify current key+model
+  const handleVerify = async () => {
+    setIsVerifying(true);
+    setVerifyResult(null);
+    try {
+      if (isUsingFreeKey && selectedFreeKey) {
+        const result = await verifyKeyModel(selectedFreeKey, selectedModel);
+        setVerifyResult(result);
+      } else {
+        const currentKey = apiKeys.find((k) => k.provider === activeProvider)?.key || '';
+        if (currentKey) {
+          const result = await verifyManualKeyModel(activeProvider, currentKey, selectedModel);
+          setVerifyResult(result);
+        } else {
+          setVerifyResult({ success: false, error: 'لا يوجد مفتاح API' });
+        }
+      }
+    } catch (err) {
+      setVerifyResult({ success: false, error: 'فشل التحقق' });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Change model
+  const handleChangeModel = (model: string) => {
+    setSelectedModel(model);
+    clearMessages();
+    setShowModelSection(false);
+  };
+
+  const filteredModels = models.filter((m) =>
+    m.toLowerCase().includes(modelSearch.toLowerCase())
+  );
 
   const providerInfo = PROVIDER_INFO.find((p) => p.id === activeProvider);
 
@@ -408,19 +528,363 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
           <div className="overflow-y-auto custom-scrollbar max-h-[calc(90vh-140px)]">
             <div className="p-4 space-y-3">
 
-              {/* ===== Provider Info ===== */}
-              {providerInfo && (
-                <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] px-4 py-3 flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${providerInfo.color} flex items-center justify-center text-lg`}>
-                    {providerInfo.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-white font-medium">{providerInfo.name}</p>
-                    <p className="text-xs text-gray-500" dir="ltr">{selectedModel}</p>
-                  </div>
-                  <Key className="w-4 h-4 text-gray-600" />
+              {/* ===== Current Key Info ===== */}
+              <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] px-4 py-3">
+                <div className="flex items-center gap-3">
+                  {isUsingFreeKey && selectedFreeKey ? (
+                    <>
+                      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${getCategoryColor(selectedFreeKey.category)} flex items-center justify-center text-lg flex-shrink-0`}>
+                        {getCategoryIcon(selectedFreeKey.category)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white font-medium">{selectedFreeKey.category} - مفتاح مجاني</p>
+                        <p className="text-xs text-gray-500" dir="ltr">{selectedFreeKey.key.slice(0, 8)}...{selectedFreeKey.key.slice(-4)}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-gray-600">{selectedFreeKey.budget}</span>
+                          <span className="text-[10px] text-gray-700">|</span>
+                          <span className="text-[10px] text-gray-600">ينتهي: {selectedFreeKey.expires}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : providerInfo ? (
+                    <>
+                      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${providerInfo.color} flex items-center justify-center text-lg flex-shrink-0`}>
+                        {providerInfo.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white font-medium">{providerInfo.name}</p>
+                        <p className="text-xs text-gray-500">{providerInfo.nameAr} - مفتاح يدوي</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center text-lg flex-shrink-0">
+                        🔑
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-400">لا يوجد مفتاح نشط</p>
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* ===== Change Key Section ===== */}
+              <SettingSection icon={<Key className="w-4 h-4" />} label="تغيير المفتاح" defaultOpen={false}>
+                <div className="space-y-2">
+                  {/* Toggle free keys list */}
+                  <button
+                    onClick={() => {
+                      setShowFreeKeysList(!showFreeKeysList);
+                      if (!showFreeKeysList && freeKeys.length === 0) {
+                        loadFreeKeys();
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                      <Zap className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <p className="text-xs text-white font-medium">المفاتيح المجانية</p>
+                      <p className="text-[10px] text-gray-500">{freeKeys.length} مفتاح متاح</p>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${showFreeKeysList ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {/* Free keys list */}
+                  <AnimatePresence>
+                    {showFreeKeysList && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar bg-white/5 rounded-xl p-2 border border-white/[0.06]">
+                          {isLoadingFreeKeys ? (
+                            <div className="flex items-center justify-center py-4 gap-2">
+                              <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                              <p className="text-xs text-gray-400">جاري التحميل...</p>
+                            </div>
+                          ) : freeKeys.length === 0 ? (
+                            <div className="flex items-center justify-center py-4">
+                              <button onClick={loadFreeKeys} className="text-xs text-emerald-400 flex items-center gap-1">
+                                <RefreshCw className="w-3 h-3" />
+                                تحديث المفاتيح
+                              </button>
+                            </div>
+                          ) : (
+                            freeKeys.map((key) => {
+                              const isCurrent = isUsingFreeKey && selectedFreeKey?.id === key.id;
+                              const isExhausted = exhaustedKeyIds.includes(key.id);
+                              return (
+                                <button
+                                  key={key.id}
+                                  onClick={() => !isExhausted && handleSwitchToFreeKey(key)}
+                                  disabled={isExhausted || switchingKeyId !== null}
+                                  className={`w-full text-right px-3 py-2 rounded-lg border transition-all text-xs flex items-center gap-2 ${
+                                    isCurrent
+                                      ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                                      : isExhausted
+                                      ? 'bg-red-500/5 border-red-500/10 text-gray-600 opacity-50'
+                                      : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10 hover:border-white/10'
+                                  }`}
+                                >
+                                  <div className={`w-7 h-7 rounded bg-gradient-to-br ${getCategoryColor(key.category)} flex items-center justify-center text-sm flex-shrink-0`}>
+                                    {getCategoryIcon(key.category)}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium truncate">{key.category}</p>
+                                    <p className="text-[10px] text-gray-500 truncate" dir="ltr">{key.model}</p>
+                                  </div>
+                                  {switchingKeyId === key.id ? (
+                                    <Loader2 className="w-3 h-3 text-emerald-400 animate-spin flex-shrink-0" />
+                                  ) : isCurrent ? (
+                                    <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                                  ) : isExhausted ? (
+                                    <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                                  ) : null}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                        <div className="flex justify-center mt-1">
+                          <button onClick={loadFreeKeys} disabled={isLoadingFreeKeys} className="text-[10px] text-gray-500 hover:text-gray-400 flex items-center gap-1">
+                            <RefreshCw className={`w-3 h-3 ${isLoadingFreeKeys ? 'animate-spin' : ''}`} />
+                            تحديث
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Toggle manual key form */}
+                  <button
+                    onClick={() => setShowManualKeyForm(!showManualKeyForm)}
+                    className="w-full flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                      <Plus className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <p className="text-xs text-white font-medium">إدخال مفتاح API يدوياً</p>
+                      <p className="text-[10px] text-gray-500">Gemini, Groq, HuggingFace, وغيرها</p>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${showManualKeyForm ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {/* Manual key form */}
+                  <AnimatePresence>
+                    {showManualKeyForm && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="space-y-2 bg-white/5 rounded-xl p-3 border border-white/[0.06]">
+                          <select
+                            value={manualKeyProvider}
+                            onChange={(e) => setManualKeyProvider(e.target.value as ApiProvider)}
+                            className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                          >
+                            {PROVIDER_INFO.map((p) => (
+                              <option key={p.id} value={p.id} className="bg-gray-900">
+                                {p.icon} {p.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="relative">
+                            <input
+                              type={showKeyPassword ? 'text' : 'password'}
+                              value={manualKeyInput}
+                              onChange={(e) => { setManualKeyInput(e.target.value); setAddKeyError(null); setAddKeySuccess(false); }}
+                              placeholder="الصق المفتاح هنا..."
+                              className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                              dir="ltr"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowKeyPassword(!showKeyPassword)}
+                              className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                            >
+                              {showKeyPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
+                          </div>
+
+                          {addKeyError && (
+                            <div className="flex items-start gap-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                              <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
+                              <p className="text-[10px] text-red-400">{addKeyError}</p>
+                            </div>
+                          )}
+
+                          {addKeySuccess && (
+                            <div className="flex items-center gap-1.5 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <p className="text-[10px] text-emerald-400">تمت إضافة المفتاح بنجاح</p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setShowManualKeyForm(false); setManualKeyInput(''); setAddKeyError(null); }}
+                              className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/[0.06] text-gray-400 text-[10px] hover:bg-white/10 transition-all"
+                            >
+                              إلغاء
+                            </button>
+                            <button
+                              onClick={handleAddManualKey}
+                              disabled={isAddingKey || !manualKeyInput.trim()}
+                              className="flex-1 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/30 disabled:opacity-30 transition-all flex items-center justify-center gap-1"
+                            >
+                              {isAddingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                              {isAddingKey ? 'جاري التحقق...' : 'إضافة وتحقق'}
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Existing manual keys */}
+                  {apiKeys.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-gray-500 px-1">المفاتيح اليدوية المحفوظة:</p>
+                      {apiKeys.map((entry) => {
+                        const pInfo = PROVIDER_INFO.find((p) => p.id === entry.provider);
+                        const isActive = !isUsingFreeKey && activeProvider === entry.provider;
+                        return (
+                          <button
+                            key={entry.provider}
+                            onClick={() => handleSwitchToManualKey(entry.provider, entry.key)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
+                              isActive
+                                ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                                : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+                            }`}
+                          >
+                            <span className="text-base">{pInfo?.icon || '🔑'}</span>
+                            <span className="flex-1 text-right">{pInfo?.name || entry.provider}</span>
+                            <span className="text-[10px] text-gray-500" dir="ltr">{entry.key.slice(0, 6)}...{entry.key.slice(-4)}</span>
+                            {isActive && <Check className="w-3 h-3 text-emerald-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </SettingSection>
+
+              {/* ===== Model Section ===== */}
+              <SettingSection icon={<Cpu className="w-4 h-4" />} label="الموديل" defaultOpen={false}>
+                <div className="space-y-2">
+                  {/* Current model */}
+                  <div className="bg-white/5 rounded-xl p-3 border border-white/[0.06]">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-white font-mono truncate flex-1" dir="ltr">{selectedModel}</p>
+                      <button
+                        onClick={handleVerify}
+                        disabled={isVerifying}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {isVerifying ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Zap className="w-3 h-3" />
+                        )}
+                        اختبار
+                      </button>
+                    </div>
+
+                    {/* Verify result */}
+                    {verifyResult && (
+                      <div className={`flex items-center gap-1.5 mt-2 p-2 rounded-lg ${
+                        verifyResult.success
+                          ? 'bg-emerald-500/10 border border-emerald-500/20'
+                          : 'bg-red-500/10 border border-red-500/20'
+                      }`}>
+                        {verifyResult.success ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <AlertTriangle className="w-3 h-3 text-red-400" />
+                        )}
+                        <p className={`text-[10px] ${verifyResult.success ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {verifyResult.success ? 'المفتاح والموديل يعملان بنجاح!' : verifyResult.error}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Toggle model list */}
+                  <button
+                    onClick={() => setShowModelSection(!showModelSection)}
+                    className="w-full flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                      <Cpu className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <p className="text-xs text-white font-medium">تغيير الموديل</p>
+                      <p className="text-[10px] text-gray-500">{models.length} موديل متاح</p>
+                    </div>
+                    <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${showModelSection ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {/* Model list */}
+                  <AnimatePresence>
+                    {showModelSection && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        {/* Search */}
+                        <input
+                          type="text"
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                          placeholder="ابحث عن موديل..."
+                          className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 mb-1"
+                          dir="ltr"
+                        />
+
+                        <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar bg-white/5 rounded-xl p-2 border border-white/[0.06]">
+                          {filteredModels.map((model) => (
+                            <button
+                              key={model}
+                              onClick={() => handleChangeModel(model)}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono transition-all flex items-center gap-2 ${
+                                selectedModel === model
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/20'
+                                  : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-transparent'
+                              }`}
+                              dir="ltr"
+                            >
+                              {selectedModel === model ? (
+                                <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                              ) : (
+                                <div className="w-3 h-3 rounded-full border border-gray-600 flex-shrink-0" />
+                              )}
+                              <span className="truncate">{model}</span>
+                            </button>
+                          ))}
+                          {filteredModels.length === 0 && (
+                            <p className="text-xs text-gray-500 text-center py-3">لا توجد موديلات مطابقة</p>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-amber-400/80 mt-1">
+                          تغيير الموديل سيمسح المحادثة الحالية
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </SettingSection>
 
               {/* ===== Language ===== */}
               <SettingSection icon={<Globe className="w-4 h-4" />} label="لغة الرد">
@@ -456,8 +920,8 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                       <p className="text-sm text-white font-medium">
                         {tempLanguage === 'ar' ? 'صوت عربي' : tempLanguage === 'en' ? 'English Voice' : '日本語音声'}
                       </p>
-                      <p className="text-[10px] text-gray-500">
-                        Web Speech Synthesis - يتغير تلقائياً مع اللغة
+                      <p className="text-[10px] text-emerald-400">
+                        جميع الردود صوتية - الأفاتار يتحدث بالصوت
                       </p>
                     </div>
                   </div>
@@ -465,8 +929,7 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
               </SettingSection>
 
               {/* ===== Backgrounds ===== */}
-              <SettingSection icon={<Palette className="w-4 h-4" />} label="خلفية الأفاتار" defaultOpen={true}>
-                {/* Button to open popup */}
+              <SettingSection icon={<Palette className="w-4 h-4" />} label="خلفية الأفاتار" defaultOpen={false}>
                 <button
                   onClick={() => setShowBgPopup(true)}
                   className="w-full flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
@@ -496,42 +959,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                 </button>
               </SettingSection>
 
-              {/* ===== Model ===== */}
-              <SettingSection icon={<Cpu className="w-4 h-4" />} label="الموديل" defaultOpen={false}>
-                {!showModelSelect ? (
-                  <div className="bg-white/5 rounded-xl p-3 border border-white/[0.06] mb-2">
-                    <p className="text-sm text-white font-mono truncate" dir="ltr">{selectedModel}</p>
-                    <button
-                      onClick={() => setShowModelSelect(true)}
-                      className="mt-2 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-                    >
-                      تغيير الموديل
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar bg-white/5 rounded-xl p-2 border border-white/[0.06]">
-                      {models.map((model) => (
-                        <button
-                          key={model}
-                          onClick={() => {
-                            setSelectedModel(model);
-                            setShowModelSelect(false);
-                          }}
-                          className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-mono transition-all bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
-                          dir="ltr"
-                        >
-                          {model}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-amber-400/80">
-                      تغيير الموديل سيمسح المحادثة الحالية
-                    </p>
-                  </div>
-                )}
-              </SettingSection>
-
               {/* ===== Permanent Memory ===== */}
               <SettingSection icon={<Brain className="w-4 h-4" />} label="ملف الذاكرة الدائمة" defaultOpen={false}>
                 <p className="text-[10px] text-gray-500 mb-2">
@@ -542,8 +969,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                   onUpdate={(id, content) => handleUpdateTempMemory(id, content)}
                   onAdd={handleAddTempMemory}
                   onRemove={handleRemoveTempMemory}
-                  title="ذاكرة دائمة"
-                  icon={<Brain className="w-3 h-3" />}
                 />
               </SettingSection>
 
@@ -583,145 +1008,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                 )}
               </SettingSection>
 
-              {/* ===== Current Free Key ===== */}
-              {isUsingFreeKey && selectedFreeKey && (
-                <div className="bg-emerald-500/5 rounded-2xl border border-emerald-500/20 px-4 py-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">{selectedFreeKey.category === 'GPT' ? '🧠' : selectedFreeKey.category === 'Claude' ? '🎭' : '🔑'}</span>
-                    <p className="text-sm text-emerald-300 font-medium">مفتاح مجاني نشط</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-400">الفئة: {selectedFreeKey.category}</p>
-                    <p className="text-xs text-gray-400">الموديل: <span dir="ltr">{selectedFreeKey.model}</span></p>
-                    <p className="text-xs text-gray-400">الميزانية: {selectedFreeKey.budget}</p>
-                    <p className="text-xs text-gray-400">ينتهي: {selectedFreeKey.expires}</p>
-                  </div>
-                  <p className="text-[10px] text-gray-600 mt-2">
-                    المفاتيح المجانية متاحة ({freeKeys.length}) · يتم التبديل تلقائياً عند نفاد الحصة
-                  </p>
-                </div>
-              )}
-
-              {/* ===== API Keys ===== */}
-              <SettingSection icon={<Key className="w-4 h-4" />} label="مفاتيح API اليدوية" defaultOpen={false}>
-                <div className="space-y-2">
-                  {/* Existing keys */}
-                  {PROVIDER_INFO.map((p) => {
-                    const hasKey = apiKeys.some((k) => k.provider === p.id && k.key);
-                    const isActive = activeProvider === p.id && !isUsingFreeKey;
-                    return (
-                      <div key={p.id} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2 border border-white/[0.06]">
-                        <span className="text-base">{p.icon}</span>
-                        <span className="text-xs text-gray-300 flex-1">{p.name}</span>
-                        {hasKey ? (
-                          <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">فعّال</span>
-                        ) : (
-                          <span className="text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded">غير مضاف</span>
-                        )}
-                        {isActive && (
-                          <span className="text-[10px] text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/30">نشط</span>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Add new key */}
-                  {!showManualKey ? (
-                    <button
-                      onClick={() => setShowManualKey(true)}
-                      className="w-full py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3 h-3" />
-                      إضافة مفتاح جديد
-                    </button>
-                  ) : (
-                    <div className="space-y-2 bg-white/5 rounded-xl p-3 border border-white/[0.06]">
-                      {/* Provider select */}
-                      <select
-                        value={manualKeyProvider}
-                        onChange={(e) => setManualKeyProvider(e.target.value as ApiProvider)}
-                        className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                      >
-                        {PROVIDER_INFO.map((p) => (
-                          <option key={p.id} value={p.id} className="bg-gray-900">
-                            {p.icon} {p.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Key input */}
-                      <div className="relative">
-                        <input
-                          type={showManualKey ? 'text' : 'password'}
-                          value={manualKeyInput}
-                          onChange={(e) => { setManualKeyInput(e.target.value); setAddKeyError(null); setAddKeySuccess(false); }}
-                          placeholder="الصق المفتاح هنا..."
-                          className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                          dir="ltr"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowManualKey(!showManualKey)}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
-                        >
-                          {showManualKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        </button>
-                      </div>
-
-                      {/* Error */}
-                      {addKeyError && (
-                        <div className="flex items-start gap-1.5 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-                          <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
-                          <p className="text-[10px] text-red-400">{addKeyError}</p>
-                        </div>
-                      )}
-
-                      {/* Success */}
-                      {addKeySuccess && (
-                        <div className="flex items-center gap-1.5 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <p className="text-[10px] text-emerald-400">تمت إضافة المفتاح بنجاح</p>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setShowManualKey(false); setManualKeyInput(''); setAddKeyError(null); }}
-                          className="flex-1 py-1.5 rounded-lg bg-white/5 border border-white/[0.06] text-gray-400 text-[10px] hover:bg-white/10 transition-all"
-                        >
-                          إلغاء
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!manualKeyInput.trim()) { setAddKeyError('يرجى إدخال المفتاح'); return; }
-                            setIsAddingKey(true);
-                            setAddKeyError(null);
-                            try {
-                              const data = await listModels(manualKeyProvider, manualKeyInput.trim());
-                              useAppStore.getState().addApiKey({ provider: manualKeyProvider, key: manualKeyInput.trim() });
-                              setAddKeySuccess(true);
-                              setManualKeyInput('');
-                              setTimeout(() => setAddKeySuccess(false), 2000);
-                            } catch (err) {
-                              const msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
-                              setAddKeyError(msg);
-                            } finally {
-                              setIsAddingKey(false);
-                            }
-                          }}
-                          disabled={isAddingKey || !manualKeyInput.trim()}
-                          className="flex-1 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/30 disabled:opacity-30 transition-all flex items-center justify-center gap-1"
-                        >
-                          {isAddingKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                          {isAddingKey ? 'جاري التحقق...' : 'إضافة وتحقق'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </SettingSection>
-
               {/* ===== Logout ===== */}
               <div className="pt-1">
                 <button
@@ -733,7 +1019,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                 </button>
               </div>
 
-              {/* Bottom spacing */}
               <div className="h-2" />
             </div>
           </div>
@@ -769,7 +1054,6 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                 className="bg-gray-900/98 backdrop-blur-xl rounded-3xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl border border-white/10"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Popup Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
@@ -788,10 +1072,8 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                   </button>
                 </div>
 
-                {/* Popup Content - scrollable grid */}
                 <div className="p-4 overflow-y-auto custom-scrollbar max-h-[calc(85vh-80px)]">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {/* Default option */}
                     <button
                       onClick={() => {
                         setTempBackground('');
@@ -831,32 +1113,18 @@ export default function SettingsDialog({ open, onClose, onModelChange }: Setting
                             : 'border-white/10 hover:border-white/30 hover:shadow-lg'
                         }`}
                       >
-                        <div className="aspect-[16/10] relative">
-                          <div className={`absolute inset-0 bg-gradient-to-br ${bg.gradient}`} />
-                          <img
-                            src={`/backgrounds/${bg.id}.png`}
-                            alt={bg.name}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200" />
+                        <div className={`aspect-[16/10] bg-gradient-to-br ${bg.gradient} flex items-center justify-center`}>
+                          <span className="text-2xl drop-shadow-lg">{bg.emoji}</span>
                         </div>
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs">{bg.emoji}</span>
-                            <span className="text-[10px] text-white font-medium truncate">{bg.name}</span>
-                          </div>
+                          <p className="text-[10px] text-white font-medium truncate">{bg.name}</p>
                         </div>
                         {tempBackground === bg.id && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className="absolute top-1.5 right-1.5 w-5 h-5 bg-emerald-400 rounded-full flex items-center justify-center shadow-lg"
-                          >
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-emerald-400 rounded-full flex items-center justify-center">
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
-                          </motion.div>
+                          </div>
                         )}
                       </button>
                     ))}
