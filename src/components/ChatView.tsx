@@ -77,14 +77,23 @@ export default function ChatView() {
     initVoices();
     initTTS();
 
-    // Request microphone permission on mount
-    requestMicrophonePermission().then(granted => {
+    // Request microphone permission on mount - retry up to 3 times
+    const requestMicPerm = async (attempt = 0) => {
+      const granted = await requestMicrophonePermission();
       setMicPermissionGranted(granted);
-    });
+      if (!granted && attempt < 3) {
+        // Retry after a short delay
+        setTimeout(() => requestMicPerm(attempt + 1), 2000);
+      }
+    };
+    requestMicPerm();
 
+    // Unlock audio on first user interaction
     const handleFirstInteraction = () => {
       unlockAudio();
       warmupSpeech();
+      // Re-init TTS after first interaction (audio may now be unlocked)
+      initTTS();
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
     };
@@ -373,7 +382,7 @@ export default function ChatView() {
             const apiErrorMsg = apiErr instanceof Error ? apiErr.message : '';
             // Handle geo-restriction errors
             if (apiErrorMsg === 'GEO_BLOCKED') {
-              throw new Error('موقعك الجغرافي غير مدعوم من هذا المزود. جرب استخدام المفاتيح المجانية أو مزود آخر مثل Groq أو OpenRouter.');
+              throw new Error('موقعك الجغرافي غير مدعوم من هذا المزود. جرب: 1) المفاتيح المجانية، 2) مزود Groq أو OpenRouter، 3) استخدام VPN.');
             }
             if (apiErrorMsg === 'RATE_LIMITED') {
               throw new Error('تم تجاوز حد الطلبات. انتظر قليلاً ثم حاول مجدداً.');
@@ -445,7 +454,7 @@ export default function ChatView() {
     : interimText;
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)' }}>
       {/* Background */}
       {selectedBackground ? (
         <div className="fixed inset-0 z-0">

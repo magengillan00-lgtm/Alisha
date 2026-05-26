@@ -256,6 +256,7 @@ async function testDirectAudioPlayback(): Promise<boolean> {
     try {
       const testAudio = new Audio();
       testAudio.volume = 0.01;
+      // DO NOT set crossOrigin - Google TTS doesn't support CORS
       let resolved = false;
 
       testAudio.oncanplaythrough = () => {
@@ -263,6 +264,15 @@ async function testDirectAudioPlayback(): Promise<boolean> {
           resolved = true;
           testAudio.src = '';
           console.log('[TTS] Direct audio playback WORKS');
+          resolve(true);
+        }
+      };
+
+      testAudio.oncanplay = () => {
+        if (!resolved && testAudio.readyState >= 3) {
+          resolved = true;
+          testAudio.src = '';
+          console.log('[TTS] Direct audio playback WORKS (canplay)');
           resolve(true);
         }
       };
@@ -286,7 +296,7 @@ async function testDirectAudioPlayback(): Promise<boolean> {
           console.log('[TTS] Direct audio playback test timed out');
           resolve(false);
         }
-      }, 5000);
+      }, 8000);
     } catch (_e) {
       resolve(false);
     }
@@ -295,18 +305,45 @@ async function testDirectAudioPlayback(): Promise<boolean> {
 
 /**
  * Initialize and determine which TTS method to use.
- * Priority: Web Speech API > Direct Audio > Fetch Audio
+ * On Android WebView: Direct Audio first (Web Speech API is unreliable)
+ * On browsers: Web Speech API > Direct Audio > Fetch Audio
  */
 export async function initTTS(): Promise<void> {
   if (speechAPITested) return;
   speechAPITested = true;
 
   console.log('[TTS] Initializing TTS system...');
+  console.log('[TTS] Platform: Android WV:', isAndroidWebView, 'iOS WV:', isIOSWebView, 'Mobile:', isMobile);
 
   // Make sure audio is unlocked first
   unlockAudio();
 
-  // Step 1: Try Web Speech API
+  // On Android WebView, Web Speech API is unreliable (may exist but produce no audio)
+  // Try Direct Audio first for better reliability
+  if (isAndroidWebView || isMobile) {
+    console.log('[TTS] Mobile/WebView detected - trying Direct Audio first');
+    const directAudioWorks = await testDirectAudioPlayback();
+    if (directAudioWorks) {
+      ttsMethod = 'direct-audio';
+      console.log('[TTS] Selected method: Direct Audio (Google TTS via <audio>)');
+      return;
+    }
+
+    // Try Web Speech API as fallback
+    const webSpeechWorks = await testSpeechAPI();
+    if (webSpeechWorks) {
+      ttsMethod = 'webspeech';
+      console.log('[TTS] Selected method: Web Speech API (fallback)');
+      return;
+    }
+
+    // Last resort
+    ttsMethod = 'direct-audio'; // Still try direct-audio at runtime even if test failed
+    console.log('[TTS] Will try Direct Audio at runtime (test failed but may work with real text)');
+    return;
+  }
+
+  // Desktop browser: Web Speech API first
   const webSpeechWorks = await testSpeechAPI();
   if (webSpeechWorks) {
     ttsMethod = 'webspeech';
@@ -322,9 +359,9 @@ export async function initTTS(): Promise<void> {
     return;
   }
 
-  // Step 3: Fall back to fetch+blob approach
-  ttsMethod = 'fetch-audio';
-  console.log('[TTS] Selected method: Fetch Audio (Google TTS via fetch+blob)');
+  // Step 3: Fall back to direct-audio at runtime even if test failed
+  ttsMethod = 'direct-audio';
+  console.log('[TTS] Will try Direct Audio at runtime (all tests failed)');
 }
 
 /**
@@ -484,7 +521,7 @@ export async function speakText(
 
   isCurrentlySpeaking = true;
 
-  console.log('[TTS] Speaking with method:', ttsMethod);
+  console.log('[TTS] Speaking with method:', ttsMethod, 'text length:', cleanText.length);
 
   switch (ttsMethod) {
     case 'webspeech':
@@ -497,8 +534,12 @@ export async function speakText(
       speakWithGoogleTTS(cleanText, lang, onEnd, onStart);
       break;
     default:
-      // If untested, try all methods in order
-      speakWithFallbackChain(cleanText, lang, onEnd, onStart, rate);
+      // If untested, try direct audio first on mobile, webspeech on desktop
+      if (isMobile || isAndroidWebView) {
+        speakWithDirectAudio(cleanText, lang, onEnd, onStart);
+      } else {
+        speakWithFallbackChain(cleanText, lang, onEnd, onStart, rate);
+      }
       break;
   }
 }
@@ -854,7 +895,9 @@ async function speakWithDirectAudio(
         const audio = new Audio();
         audio.preload = 'auto';
         audio.volume = 1.0;
-        audio.crossOrigin = 'anonymous'; // Try with CORS first
+        // DO NOT set crossOrigin - Google TTS doesn't send CORS headers,
+        // and <audio> elements can load cross-origin audio WITHOUT CORS when crossOrigin is not set.
+        // Setting crossOrigin = 'anonymous' would BLOCK the audio from loading.
         audio.src = url;
         audioElement = audio;
 
@@ -862,18 +905,28 @@ async function speakWithDirectAudio(
           const timeout = setTimeout(() => {
             console.log('[TTS] Direct audio: timeout for this URL variant');
             resolve(false);
-          }, 8000); // 8 second timeout per chunk
+          }, 10000); // 10 second timeout per chunk
 
-          audio.oncanplaythrough = () => {
-            // Audio is ready to play
+          // Try playing as soon as we have enough data
+          const tryPlay = () => {
             audio.play().then(() => {
               clearTimeout(timeout);
               resolve(true);
             }).catch((err) => {
               console.warn('[TTS] Direct audio: play() failed:', err);
-              clearTimeout(timeout);
-              resolve(false);
+              // Don't give up yet - wait for more data
             });
+          };
+
+          audio.oncanplaythrough = () => {
+            tryPlay();
+          };
+
+          // Also try on canplay (fires earlier than canplaythrough)
+          audio.oncanplay = () => {
+            if (audio.readyState >= 3) {
+              tryPlay();
+            }
           };
 
           audio.onplaying = () => {

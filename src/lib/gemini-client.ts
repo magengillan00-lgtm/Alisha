@@ -45,6 +45,17 @@ const geminiProvider: ProviderConfig = {
       if (res.status === 400 && errorMsg.includes('location is not supported')) {
         throw new Error('GEO_BLOCKED');
       }
+      // 429 on listModels with a new key = geo-block
+      if (res.status === 429) {
+        const isGeoBlock = errorMsg.includes('limit: 0') ||
+          errorMsg.includes('quotaId') ||
+          errorMsg.includes('location is not supported') ||
+          errorMsg.includes('not available in your country');
+        if (isGeoBlock) {
+          throw new Error('GEO_BLOCKED');
+        }
+        throw new Error('مفتاح Gemini API وصل للحد الأقصى للطلبات. جرب مفتاح آخر أو استخدم المفاتيح المجانية.');
+      }
       if (res.status === 401 || res.status === 403) {
         throw new Error('مفتاح Gemini API غير صالح.');
       }
@@ -84,7 +95,14 @@ const geminiProvider: ProviderConfig = {
       }
       if (res.status === 429) {
         // Check if it's a quota limit of 0 (geo-restriction disguised as quota)
-        if (errorMsg.includes('limit: 0') || errorMsg.includes('quotaId')) {
+        // Common patterns: "limit: 0", "quotaId", "User location is not supported",
+        // "quota exceeded" on a brand new key = geo-block, not actual usage
+        const isGeoBlock = errorMsg.includes('limit: 0') ||
+          errorMsg.includes('quotaId') ||
+          errorMsg.includes('location is not supported') ||
+          errorMsg.includes('not available in your country') ||
+          errorMsg.includes('not available in your region');
+        if (isGeoBlock) {
           throw new Error('GEO_BLOCKED');
         }
         throw new Error('RATE_LIMITED');
