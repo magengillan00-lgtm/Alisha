@@ -65,9 +65,9 @@ const GTTS_LANG_MAP: Record<string, string> = {
 
 // Voice names for TTS (Web Speech API)
 const VOICE_NAMES: Record<string, string[]> = {
-  ar: ['Arabic', 'arabic', 'Microsoft Naayf', 'Google العربية', 'Majed', 'Laila', 'Hoda'],
+  ar: ['Arabic', 'arabic', 'Microsoft Naayf', 'Google \u0627\u0644\u0639\u0631\u0628\u064a\u0629', 'Majed', 'Laila', 'Hoda', 'Maged'],
   en: ['Google US English', 'Microsoft David', 'Samantha', 'Alex', 'Daniel', 'Google UK English Male'],
-  ja: ['Google 日本語', 'Kyoko', 'Otoya', 'Microsoft Haruka', 'Microsoft Ayumi'],
+  ja: ['Google \u65e5\u672c\u8a9e', 'Kyoko', 'Otoya', 'Microsoft Haruka', 'Microsoft Ayumi'],
 };
 
 // ============ PLATFORM DETECTION ============
@@ -84,7 +84,7 @@ function detectPlatform(): void {
   isIOSWebView = /iPhone|iPad|iPod/.test(ua) && /wv|Capacitor/.test(ua);
   isMobile = /Android|iPhone|iPad|iPod|Mobile/.test(ua);
 
-  console.log('TTS: Platform detected - Android WV:', isAndroidWebView, 'iOS WV:', isIOSWebView, 'Mobile:', isMobile);
+  console.log('[TTS] Platform detected - Android WV:', isAndroidWebView, 'iOS WV:', isIOSWebView, 'Mobile:', isMobile);
 }
 
 // Detect platform on load
@@ -95,11 +95,10 @@ detectPlatform();
 let currentSpeechGeneration = 0;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let audioElement: HTMLAudioElement | null = null;
-let useWebSpeechAPI = true;
 
-// Detect if Web Speech API actually works (Android WebView reports it exists but doesn't work)
+// TTS method priority: 'webspeech' | 'direct-audio' | 'fetch-audio'
+let ttsMethod: 'webspeech' | 'direct-audio' | 'fetch-audio' | 'untested' = 'untested';
 let speechAPITested = false;
-let speechAPIWorks = false;
 
 // Audio context for unlocking autoplay on mobile
 let audioContext: AudioContext | null = null;
@@ -137,13 +136,13 @@ export function unlockAudio(): void {
     if (audioContext && audioContext.state === 'suspended') {
       audioContext.resume().then(() => {
         audioUnlocked = true;
-        console.log('TTS: Audio context unlocked');
+        console.log('[TTS] Audio context unlocked');
       }).catch(() => {
         audioUnlocked = true;
       });
     } else if (audioContext) {
       audioUnlocked = true;
-      console.log('TTS: Audio context already running');
+      console.log('[TTS] Audio context already running');
     }
 
     // Also play a tiny silent audio to fully unlock the audio element
@@ -153,7 +152,7 @@ export function unlockAudio(): void {
     if (playPromise) {
       playPromise.then(() => {
         audioUnlocked = true;
-        console.log('TTS: Audio element unlocked via silent play');
+        console.log('[TTS] Audio element unlocked via silent play');
         silentAudio.pause();
         silentAudio.src = '';
       }).catch(() => {
@@ -167,36 +166,127 @@ export function unlockAudio(): void {
 
 /**
  * Test if Web Speech Synthesis actually produces audio.
- * On Android WebView, speechSynthesis exists but voices list is empty or speak() is silent.
+ * On Android WebView, speechSynthesis may exist but be silent.
+ * We test by attempting to speak and checking if onstart fires.
  */
 export async function testSpeechAPI(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
-  // On Android WebView, skip Web Speech API entirely - it never works reliably
-  if (isAndroidWebView) {
-    console.log('TTS: Android WebView detected - skipping Web Speech API test, using audio fallback');
-    return false;
-  }
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth) return false;
 
-  return new Promise((resolve) => {
-    try {
-      const synth = window.speechSynthesis;
-
-      // Wait for voices to load
-      const voices = synth.getVoices();
-      if (voices.length === 0) {
+    // Wait for voices to load
+    let voices = synth.getVoices();
+    if (voices.length === 0) {
+      await new Promise<void>((resolve) => {
         synth.onvoiceschanged = () => {
-          const v = synth.getVoices();
-          resolve(v.length > 0);
+          voices = synth.getVoices();
+          resolve();
         };
-        setTimeout(() => {
-          const v = synth.getVoices();
-          resolve(v.length > 0);
-        }, 1500);
+        setTimeout(resolve, 2000);
+      });
+      voices = synth.getVoices();
+    }
+
+    // Even on Android WebView, try to actually speak and test
+    // The key test: does onstart fire?
+    return new Promise((resolve) => {
+      // Cancel any ongoing speech first
+      synth.cancel();
+
+      const testUtterance = new SpeechSynthesisUtterance('\u0645\u0631\u062d\u0628\u0627'); // "مرحبا"
+      testUtterance.lang = 'ar-SA';
+      testUtterance.volume = 0.01; // Very quiet test
+      testUtterance.rate = 3; // Fast
+
+      let resolved = false;
+
+      testUtterance.onstart = () => {
+        if (!resolved) {
+          resolved = true;
+          synth.cancel(); // Stop the test speech
+          console.log('[TTS] Web Speech API WORKS - onstart fired');
+          resolve(true);
+        }
+      };
+
+      testUtterance.onerror = (e) => {
+        if (!resolved) {
+          resolved = true;
+          const err = e as SpeechSynthesisErrorEvent;
+          console.log('[TTS] Web Speech API error:', err.error);
+          // "canceled" is expected since we cancel after onstart
+          if (err.error === 'canceled') {
+            resolve(true); // It started, we canceled it
+          } else {
+            resolve(false);
+          }
+        }
+      };
+
+      try {
+        synth.speak(testUtterance);
+      } catch (_e) {
+        resolve(false);
         return;
       }
 
-      resolve(true);
+      // Timeout: if onstart doesn't fire within 3 seconds, assume it doesn't work
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          synth.cancel();
+          console.log('[TTS] Web Speech API test timed out - likely not working');
+          resolve(false);
+        }
+      }, 3000);
+    });
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
+ * Test if direct audio element playback works (for Google TTS).
+ * This bypasses CORS because <audio> elements can load cross-origin resources.
+ */
+async function testDirectAudioPlayback(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const testAudio = new Audio();
+      testAudio.volume = 0.01;
+      let resolved = false;
+
+      testAudio.oncanplaythrough = () => {
+        if (!resolved) {
+          resolved = true;
+          testAudio.src = '';
+          console.log('[TTS] Direct audio playback WORKS');
+          resolve(true);
+        }
+      };
+
+      testAudio.onerror = () => {
+        if (!resolved) {
+          resolved = true;
+          console.log('[TTS] Direct audio playback test failed');
+          resolve(false);
+        }
+      };
+
+      // Use a very short Google TTS URL for testing
+      testAudio.src = 'https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=hi';
+      testAudio.preload = 'auto';
+
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          testAudio.src = '';
+          console.log('[TTS] Direct audio playback test timed out');
+          resolve(false);
+        }
+      }, 5000);
     } catch (_e) {
       resolve(false);
     }
@@ -205,21 +295,36 @@ export async function testSpeechAPI(): Promise<boolean> {
 
 /**
  * Initialize and determine which TTS method to use.
+ * Priority: Web Speech API > Direct Audio > Fetch Audio
  */
 export async function initTTS(): Promise<void> {
   if (speechAPITested) return;
   speechAPITested = true;
 
-  const works = await testSpeechAPI();
-  if (works) {
-    speechAPIWorks = true;
-    useWebSpeechAPI = true;
-    console.log('TTS: Using Web Speech API');
-  } else {
-    speechAPIWorks = false;
-    useWebSpeechAPI = false;
-    console.log('TTS: Web Speech API unavailable, using audio TTS fallback');
+  console.log('[TTS] Initializing TTS system...');
+
+  // Make sure audio is unlocked first
+  unlockAudio();
+
+  // Step 1: Try Web Speech API
+  const webSpeechWorks = await testSpeechAPI();
+  if (webSpeechWorks) {
+    ttsMethod = 'webspeech';
+    console.log('[TTS] Selected method: Web Speech API');
+    return;
   }
+
+  // Step 2: Try direct audio playback (Google TTS via <audio> element)
+  const directAudioWorks = await testDirectAudioPlayback();
+  if (directAudioWorks) {
+    ttsMethod = 'direct-audio';
+    console.log('[TTS] Selected method: Direct Audio (Google TTS via <audio>)');
+    return;
+  }
+
+  // Step 3: Fall back to fetch+blob approach
+  ttsMethod = 'fetch-audio';
+  console.log('[TTS] Selected method: Fetch Audio (Google TTS via fetch+blob)');
 }
 
 /**
@@ -239,7 +344,7 @@ export function cancelSpeech(): void {
     // ignore
   }
 
-  // Cancel audio element (Google TTS fallback)
+  // Cancel audio element
   if (audioElement) {
     try {
       audioElement.pause();
@@ -331,7 +436,7 @@ function findVoice(langCode: string): SpeechSynthesisVoice | null {
 
 /**
  * Speak text using available TTS method.
- * Automatically falls back to Google Translate TTS if Web Speech API doesn't work.
+ * Automatically falls back through methods: Web Speech > Direct Audio > Fetch Audio
  */
 export async function speakText(
   text: string,
@@ -358,7 +463,7 @@ export async function speakText(
     .replace(/```[\s\S]*?```/g, '') // Remove code blocks
     .replace(/`(.*?)`/g, '$1') // Remove inline code
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
-    .replace(/[-•*]\s/g, '') // Remove list markers
+    .replace(/[-\u2022*]\s/g, '') // Remove list markers
     .replace(/\d+\.\s/g, '') // Remove numbered lists
     .trim();
 
@@ -379,11 +484,90 @@ export async function speakText(
 
   isCurrentlySpeaking = true;
 
-  if (useWebSpeechAPI) {
-    speakWithWebSpeech(cleanText, lang, onEnd, onStart, rate);
-  } else {
-    speakWithGoogleTTS(cleanText, lang, onEnd, onStart);
+  console.log('[TTS] Speaking with method:', ttsMethod);
+
+  switch (ttsMethod) {
+    case 'webspeech':
+      speakWithWebSpeech(cleanText, lang, onEnd, onStart, rate);
+      break;
+    case 'direct-audio':
+      speakWithDirectAudio(cleanText, lang, onEnd, onStart);
+      break;
+    case 'fetch-audio':
+      speakWithGoogleTTS(cleanText, lang, onEnd, onStart);
+      break;
+    default:
+      // If untested, try all methods in order
+      speakWithFallbackChain(cleanText, lang, onEnd, onStart, rate);
+      break;
   }
+}
+
+// ============ FALLBACK CHAIN ============
+
+/**
+ * Try all TTS methods in order until one works.
+ */
+function speakWithFallbackChain(
+  text: string,
+  lang: string,
+  onEnd: () => void,
+  onStart?: () => void,
+  rate: number = 1.0
+): void {
+  const thisGeneration = ++currentSpeechGeneration;
+  let methodIndex = 0;
+  const methods: Array<() => void> = [
+    // Method 1: Web Speech API
+    () => {
+      console.log('[TTS] Fallback chain: trying Web Speech API...');
+      speakWithWebSpeech(
+        text, lang,
+        () => {
+          if (thisGeneration === currentSpeechGeneration) onEnd();
+        },
+        () => {
+          ttsMethod = 'webspeech';
+          if (onStart) onStart();
+        },
+        rate,
+      );
+    },
+    // Method 2: Direct Audio (Google TTS via <audio>)
+    () => {
+      console.log('[TTS] Fallback chain: trying Direct Audio...');
+      speakWithDirectAudio(
+        text, lang,
+        () => {
+          if (thisGeneration === currentSpeechGeneration) onEnd();
+        },
+        () => {
+          ttsMethod = 'direct-audio';
+          if (onStart) onStart();
+        },
+      );
+    },
+    // Method 3: Fetch Audio (Google TTS via fetch+blob)
+    () => {
+      console.log('[TTS] Fallback chain: trying Fetch Audio...');
+      speakWithGoogleTTS(
+        text, lang,
+        () => {
+          if (thisGeneration === currentSpeechGeneration) onEnd();
+        },
+        () => {
+          ttsMethod = 'fetch-audio';
+          if (onStart) onStart();
+        },
+      );
+    },
+  ];
+
+  // Try Web Speech first
+  methods[methodIndex]();
+
+  // If it doesn't start within 3 seconds, try next method
+  // This is handled by the individual speak functions' timeout logic
 }
 
 // ============ WEB SPEECH API TTS ============
@@ -461,36 +645,36 @@ function speakSingle(
       if (generation === currentSpeechGeneration) onEnd();
       return;
     }
-    console.warn('Web Speech API error, switching to Google TTS:', err.error);
-    useWebSpeechAPI = false;
+    console.warn('[TTS] Web Speech API error, falling back to Direct Audio:', err.error);
     ended = true;
     stopKeepAlive();
     if (generation === currentSpeechGeneration) {
-      speakWithGoogleTTS(text, lang, onEnd, onStart);
+      // Try next method
+      speakWithDirectAudio(text, lang, onEnd, onStart);
     }
   };
 
   try {
     synth.speak(utterance);
 
-    // Retry if speech doesn't start
+    // Retry with next method if speech doesn't start within 3 seconds
     setTimeout(() => {
       if (generation !== currentSpeechGeneration) return;
       if (!started && !ended) {
-        console.log('Web Speech did not start, switching to Google TTS fallback');
-        useWebSpeechAPI = false;
+        console.log('[TTS] Web Speech did not start in 3s, falling back to Direct Audio');
+        ttsMethod = 'direct-audio';
         ended = true;
         stopKeepAlive();
+        synth.cancel();
         if (generation === currentSpeechGeneration) {
-          speakWithGoogleTTS(text, lang, onEnd, onStart);
+          speakWithDirectAudio(text, lang, onEnd, onStart);
         }
       }
-    }, 2000);
+    }, 3000);
   } catch (e) {
-    console.error('Web Speech failed:', e);
-    useWebSpeechAPI = false;
+    console.error('[TTS] Web Speech failed:', e);
     if (generation === currentSpeechGeneration) {
-      speakWithGoogleTTS(text, lang, onEnd, onStart);
+      speakWithDirectAudio(text, lang, onEnd, onStart);
     }
   }
 }
@@ -506,7 +690,7 @@ function speakInChunks(
   if (typeof window === 'undefined') return;
   const synth = window.speechSynthesis;
 
-  const sentences = text.match(/[^.!?。！？\n]+[.!?。！？\n]+/g) || [text];
+  const sentences = text.match(/[^.!?。\uff01\uff1f\n]+[.!?。\uff01\uff1f\n]+/g) || [text];
   let currentIndex = 0;
   let started = false;
   let totalEnded = false;
@@ -565,20 +749,19 @@ function speakInChunks(
         onEnd();
         return;
       }
-      console.warn('Chunk error, switching to Google TTS');
-      useWebSpeechAPI = false;
+      console.warn('[TTS] Chunk error, falling back to Direct Audio');
       totalEnded = true;
       stopKeepAlive();
       const remainingText = sentences.slice(currentIndex).join('');
       if (generation === currentSpeechGeneration) {
-        speakWithGoogleTTS(remainingText || text, lang, onEnd, onStart);
+        speakWithDirectAudio(remainingText || text, lang, onEnd, onStart);
       }
     };
 
     try {
       synth.speak(utterance);
     } catch (e) {
-      console.error('Chunk speak failed:', e);
+      console.error('[TTS] Chunk speak failed:', e);
       currentIndex++;
       setTimeout(speakNextChunk, 80);
     }
@@ -587,7 +770,194 @@ function speakInChunks(
   setTimeout(speakNextChunk, 100);
 }
 
-// ============ GOOGLE TRANSLATE TTS FALLBACK ============
+// ============ DIRECT AUDIO TTS (Google TTS via <audio> element) ============
+
+/**
+ * Speak text using Google Translate TTS via direct <audio> element.
+ * This BYPASSES CORS because <audio> elements can load cross-origin audio
+ * without requiring CORS headers (unlike fetch/XMLHttpRequest).
+ *
+ * This is the PRIMARY fallback for Android WebView where Web Speech API doesn't work.
+ */
+async function speakWithDirectAudio(
+  text: string,
+  lang: string,
+  onEnd: () => void,
+  onStart?: () => void
+): Promise<void> {
+  const thisGeneration = currentSpeechGeneration;
+
+  // Cancel any existing audio
+  if (audioElement) {
+    try {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      audioElement.src = '';
+    } catch (_e) { /* ignore */ }
+    audioElement = null;
+  }
+  cleanupBlobUrls();
+
+  // Split text into chunks (Google TTS has ~200 char limit)
+  const chunks = splitTextForGoogleTTS(text, 180);
+  if (chunks.length === 0) {
+    isCurrentlySpeaking = false;
+    onEnd();
+    return;
+  }
+
+  const langCode = GTTS_LANG_MAP[lang.split('-')[0]] || 'en';
+  let chunkIndex = 0;
+  let started = false;
+  let failedChunks = 0;
+
+  async function playNextChunk(): Promise<void> {
+    // Check if this generation is still valid
+    if (thisGeneration !== currentSpeechGeneration) {
+      isCurrentlySpeaking = false;
+      return;
+    }
+    if (chunkIndex >= chunks.length) {
+      audioElement = null;
+      cleanupBlobUrls();
+      isCurrentlySpeaking = false;
+      if (thisGeneration === currentSpeechGeneration) {
+        onEnd();
+      }
+      return;
+    }
+
+    const chunk = chunks[chunkIndex];
+    const encodedText = encodeURIComponent(chunk);
+
+    // Try multiple Google TTS URL variants for maximum compatibility
+    const urls = [
+      `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
+      `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
+      `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
+      `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=dict-chrome-ex&q=${encodedText}`,
+    ];
+
+    let audioPlayed = false;
+
+    for (const url of urls) {
+      if (thisGeneration !== currentSpeechGeneration) {
+        isCurrentlySpeaking = false;
+        return;
+      }
+
+      try {
+        console.log('[TTS] Direct audio: trying URL variant', urls.indexOf(url) + 1);
+
+        // Create audio element directly with the URL
+        // This bypasses CORS because <audio> elements can load cross-origin resources
+        const audio = new Audio();
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        audio.crossOrigin = 'anonymous'; // Try with CORS first
+        audio.src = url;
+        audioElement = audio;
+
+        const playResult = await new Promise<boolean>((resolve) => {
+          const timeout = setTimeout(() => {
+            console.log('[TTS] Direct audio: timeout for this URL variant');
+            resolve(false);
+          }, 8000); // 8 second timeout per chunk
+
+          audio.oncanplaythrough = () => {
+            // Audio is ready to play
+            audio.play().then(() => {
+              clearTimeout(timeout);
+              resolve(true);
+            }).catch((err) => {
+              console.warn('[TTS] Direct audio: play() failed:', err);
+              clearTimeout(timeout);
+              resolve(false);
+            });
+          };
+
+          audio.onplaying = () => {
+            if (thisGeneration !== currentSpeechGeneration) {
+              audio.pause();
+              clearTimeout(timeout);
+              resolve(false);
+              return;
+            }
+            if (!started) {
+              started = true;
+              onStart?.();
+              console.log('[TTS] Direct audio: started playing');
+            }
+          };
+
+          audio.onerror = () => {
+            console.warn('[TTS] Direct audio: error loading URL');
+            clearTimeout(timeout);
+            resolve(false);
+          };
+
+          audio.onended = () => {
+            clearTimeout(timeout);
+            resolve(true);
+          };
+
+          // Start loading
+          audio.load();
+        });
+
+        if (playResult) {
+          audioPlayed = true;
+          // Wait for the audio to actually end
+          await new Promise<void>((resolve) => {
+            if (audio.ended) {
+              resolve();
+              return;
+            }
+            audio.onended = () => resolve();
+            // Safety timeout
+            setTimeout(() => {
+              try { audio.pause(); } catch (_e) { /* ignore */ }
+              resolve();
+            }, 15000);
+          });
+
+          console.log('[TTS] Direct audio: chunk played successfully');
+          break; // This URL worked, don't try others
+        } else {
+          // This URL didn't work, try next
+          try { audio.pause(); audio.src = ''; } catch (_e) { /* ignore */ }
+        }
+      } catch (err) {
+        console.warn('[TTS] Direct audio: error with URL variant:', err);
+      }
+    }
+
+    if (!audioPlayed) {
+      failedChunks++;
+      console.warn('[TTS] Direct audio: all URL variants failed for chunk', chunkIndex);
+
+      // If too many chunks fail, fall back to fetch method
+      if (failedChunks >= 2) {
+        console.log('[TTS] Direct audio: too many failures, falling back to Fetch Audio');
+        ttsMethod = 'fetch-audio';
+        const remainingText = chunks.slice(chunkIndex).join('. ');
+        if (thisGeneration === currentSpeechGeneration) {
+          speakWithGoogleTTS(remainingText || text, lang, onEnd, onStart);
+        }
+        return;
+      }
+    }
+
+    chunkIndex++;
+    // Small gap between chunks
+    setTimeout(playNextChunk, 100);
+  }
+
+  // Start playing first chunk
+  playNextChunk();
+}
+
+// ============ GOOGLE TRANSLATE TTS FALLBACK (Fetch + Blob) ============
 
 function cancelAndWait(): Promise<void> {
   return new Promise((resolve) => {
@@ -611,7 +981,7 @@ function cancelAndWait(): Promise<void> {
 
 /**
  * Fetch audio from Google TTS as a blob, then play via local blob URL.
- * This bypasses CORS restrictions in Android WebView.
+ * This is the LAST RESORT fallback - used when both Web Speech and Direct Audio fail.
  */
 async function fetchTTSBlob(text: string, langCode: string): Promise<string | null> {
   const encodedText = encodeURIComponent(text);
@@ -626,7 +996,7 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
 
   for (const url of urls) {
     try {
-      console.log('TTS: Fetching audio from:', url.substring(0, 80) + '...');
+      console.log('[TTS] Fetch audio: trying URL:', url.substring(0, 80) + '...');
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -635,22 +1005,22 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
       });
 
       if (!response.ok) {
-        console.warn('TTS: Fetch failed with status:', response.status);
+        console.warn('[TTS] Fetch failed with status:', response.status);
         continue;
       }
 
       const blob = await response.blob();
       if (blob.size < 100) {
-        console.warn('TTS: Response too small, likely error:', blob.size);
+        console.warn('[TTS] Response too small, likely error:', blob.size);
         continue;
       }
 
       const blobUrl = URL.createObjectURL(blob);
       activeBlobUrls.push(blobUrl);
-      console.log('TTS: Audio fetched successfully, size:', blob.size);
+      console.log('[TTS] Audio fetched successfully, size:', blob.size);
       return blobUrl;
     } catch (err) {
-      console.warn('TTS: Fetch error for URL variant:', err);
+      console.warn('[TTS] Fetch error for URL variant:', err);
     }
   }
 
@@ -658,9 +1028,8 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
 }
 
 /**
- * Speak text using Google Translate TTS (audio element fallback).
- * This works everywhere including Android WebView where Web Speech API doesn't.
- * Uses fetch+blob approach to bypass CORS restrictions.
+ * Speak text using Google Translate TTS (fetch+blob fallback).
+ * This is the LAST RESORT method.
  */
 async function speakWithGoogleTTS(
   text: string,
@@ -720,7 +1089,7 @@ async function speakWithGoogleTTS(
     }
 
     if (!blobUrl) {
-      console.warn('TTS: All fetch attempts failed for chunk', chunkIndex);
+      console.warn('[TTS] All fetch attempts failed for chunk', chunkIndex);
       chunkIndex++;
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 100);
@@ -747,13 +1116,13 @@ async function speakWithGoogleTTS(
       if (!started) {
         started = true;
         onStart?.();
-        console.log('TTS: Audio started playing');
+        console.log('[TTS] Fetch audio: started playing');
       }
     };
 
     audio.onended = () => {
       if (thisGeneration !== currentSpeechGeneration) return;
-      console.log('TTS: Audio chunk ended');
+      console.log('[TTS] Fetch audio: chunk ended');
       chunkIndex++;
       // Clean up the blob URL after use
       try {
@@ -766,7 +1135,7 @@ async function speakWithGoogleTTS(
     };
 
     audio.onerror = (e) => {
-      console.warn('TTS: Audio play error:', e);
+      console.warn('[TTS] Fetch audio: play error:', e);
       if (thisGeneration !== currentSpeechGeneration) return;
       try {
         URL.revokeObjectURL(blobUrl);
@@ -786,9 +1155,9 @@ async function speakWithGoogleTTS(
 
     try {
       await audio.play();
-      console.log('TTS: play() called successfully');
+      console.log('[TTS] Fetch audio: play() called successfully');
     } catch (err) {
-      console.warn('TTS: play() failed:', err);
+      console.warn('[TTS] Fetch audio: play() failed:', err);
       if (thisGeneration !== currentSpeechGeneration) return;
       try {
         URL.revokeObjectURL(blobUrl);
@@ -819,7 +1188,7 @@ function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
 
   const chunks: string[] = [];
-  const sentences = text.match(/[^.!?。！？\n]+[.!?。！？\n]+/g) || [text];
+  const sentences = text.match(/[^.!?。\uff01\uff1f\n]+[.!?。\uff01\uff1f\n]+/g) || [text];
 
   let current = '';
   for (const sentence of sentences) {
@@ -838,7 +1207,7 @@ function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
     if (chunk.length <= maxLen) {
       finalChunks.push(chunk);
     } else {
-      const parts = chunk.split(/[,،、;；]\s*/);
+      const parts = chunk.split(/[,,\u3001;；]\s*/);
       let sub = '';
       for (const part of parts) {
         if ((sub + part).length > maxLen && sub) {
@@ -873,7 +1242,7 @@ export function createSpeechRecognition(
     window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognitionClass) {
-    console.error('Speech recognition not supported');
+    console.error('[STT] Speech recognition not supported');
     return null;
   }
 
@@ -904,7 +1273,7 @@ export function createSpeechRecognition(
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-    console.error('Speech recognition error:', event.error);
+    console.error('[STT] Speech recognition error:', event.error);
     onError(event.error);
   };
 
@@ -951,17 +1320,17 @@ interface SpeechSynthesisErrorEvent {
 export async function requestMicrophonePermission(): Promise<boolean> {
   try {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
-      console.warn('MediaDevices API not available');
+      console.warn('[Perm] MediaDevices API not available');
       return false;
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // Stop all tracks immediately - we just needed the permission
     stream.getTracks().forEach(track => track.stop());
-    console.log('Microphone permission granted');
+    console.log('[Perm] Microphone permission granted');
     return true;
   } catch (err) {
-    console.error('Microphone permission denied:', err);
+    console.error('[Perm] Microphone permission denied:', err);
     return false;
   }
 }

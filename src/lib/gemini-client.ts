@@ -38,8 +38,12 @@ const geminiProvider: ProviderConfig = {
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       const errorMsg = errorData?.error?.message || '';
+      const errorStatus = errorData?.error?.status || '';
+      if (errorMsg.includes('location is not supported') || errorStatus === 'FAILED_PRECONDITION') {
+        throw new Error('GEO_BLOCKED');
+      }
       if (res.status === 400 && errorMsg.includes('location is not supported')) {
-        throw new Error('موقعك الجغرافي غير مدعوم لاستخدام Gemini API.');
+        throw new Error('GEO_BLOCKED');
       }
       if (res.status === 401 || res.status === 403) {
         throw new Error('مفتاح Gemini API غير صالح.');
@@ -73,7 +77,24 @@ const geminiProvider: ProviderConfig = {
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       const errorMsg = errorData?.error?.message || '';
-      if (res.status === 429) throw new Error('تم تجاوز حد الطلبات. انتظر قليلاً.');
+      const errorStatus = errorData?.error?.status || '';
+      // Geo-restriction check
+      if (errorMsg.includes('location is not supported') || errorStatus === 'FAILED_PRECONDITION') {
+        throw new Error('GEO_BLOCKED');
+      }
+      if (res.status === 429) {
+        // Check if it's a quota limit of 0 (geo-restriction disguised as quota)
+        if (errorMsg.includes('limit: 0') || errorMsg.includes('quotaId')) {
+          throw new Error('GEO_BLOCKED');
+        }
+        throw new Error('RATE_LIMITED');
+      }
+      if (res.status === 400 && errorMsg.includes('location is not supported')) {
+        throw new Error('GEO_BLOCKED');
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new Error('KEY_INVALID');
+      }
       throw new Error(errorMsg || 'حدث خطأ أثناء الاتصال بـ Gemini');
     }
     const data = await res.json();

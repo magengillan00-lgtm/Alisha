@@ -456,7 +456,11 @@ export default function SettingsDialog({ open, onClose, onMicPress, isRecording,
       setKeyChanged(true); // Mark as changed so Save button appears
       setTimeout(() => setAddKeySuccess(false), 2000);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
+      let msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
+      // Handle geo-restriction errors
+      if (msg === 'GEO_BLOCKED') {
+        msg = 'موقعك الجغرافي غير مدعوم من هذا المزود. جرب مزود آخر مثل Groq أو OpenRouter، أو استخدم المفاتيح المجانية.';
+      }
       setAddKeyError(msg);
     } finally {
       setIsAddingKey(false);

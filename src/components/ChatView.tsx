@@ -359,15 +359,30 @@ export default function ChatView() {
           if (!activeKey) {
             throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
           }
-          const data = await sendMessage(
-            activeProvider,
-            activeKey,
-            selectedModel,
-            chatMessages,
-            responseLanguage,
-            permanentMemory
-          );
-          responseText = data.text;
+          try {
+            const data = await sendMessage(
+              activeProvider,
+              activeKey,
+              selectedModel,
+              chatMessages,
+              responseLanguage,
+              permanentMemory
+            );
+            responseText = data.text;
+          } catch (apiErr) {
+            const apiErrorMsg = apiErr instanceof Error ? apiErr.message : '';
+            // Handle geo-restriction errors
+            if (apiErrorMsg === 'GEO_BLOCKED') {
+              throw new Error('موقعك الجغرافي غير مدعوم من هذا المزود. جرب استخدام المفاتيح المجانية أو مزود آخر مثل Groq أو OpenRouter.');
+            }
+            if (apiErrorMsg === 'RATE_LIMITED') {
+              throw new Error('تم تجاوز حد الطلبات. انتظر قليلاً ثم حاول مجدداً.');
+            }
+            if (apiErrorMsg === 'KEY_INVALID') {
+              throw new Error('مفتاح API غير صالح أو منتهي الصلاحية. تحقق من المفتاح في الإعدادات.');
+            }
+            throw apiErr;
+          }
         }
 
         const assistantMsg = {
@@ -397,7 +412,11 @@ export default function ChatView() {
           );
         }, 300);
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
+        let errorMsg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
+        // Handle geo-restriction errors from free keys
+        if (errorMsg === 'GEO_BLOCKED') {
+          errorMsg = 'موقعك الجغرافي غير مدعوم. جرب استخدام المفاتيح المجانية أو مزود آخر.';
+        }
         setError(errorMsg);
         setAvatarState('idle');
       } finally {
