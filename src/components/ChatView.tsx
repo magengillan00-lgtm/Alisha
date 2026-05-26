@@ -7,6 +7,7 @@ import {
   MessageSquare,
   AlertTriangle,
   X,
+  Mic,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
@@ -55,29 +56,9 @@ export default function ChatView() {
   const [lastUserText, setLastUserText] = useState('');
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [micEnabled, setMicEnabled] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
-
-  // Load mic preference from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('alisha-mic-enabled');
-    if (saved === 'true') setMicEnabled(true);
-  }, []);
-
-  const handleMicToggle = useCallback((enabled: boolean) => {
-    setMicEnabled(enabled);
-    localStorage.setItem('alisha-mic-enabled', String(enabled));
-    if (!enabled && isRecording) {
-      const recognition = recognitionRef.current as { stop: () => void; abort: () => void } | null;
-      if (recognition) {
-        try { recognition.stop(); } catch (_e) { recognition.abort(); }
-      }
-      setIsRecording(false);
-      setAvatarState('idle');
-    }
-  }, [isRecording, setAvatarState]);
 
   // Initialize TTS and voices on mount
   useEffect(() => {
@@ -328,7 +309,7 @@ export default function ChatView() {
               setAvatarState('speaking');
             }
           );
-        }, 200);
+        }, 300);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
         setError(errorMsg);
@@ -351,7 +332,6 @@ export default function ChatView() {
   );
 
   const handleMicPress = useCallback(() => {
-    if (!micEnabled) return;
     if (isRecording) {
       stopRecording();
     } else {
@@ -360,10 +340,10 @@ export default function ChatView() {
       setAvatarState('idle');
       startRecording();
     }
-  }, [micEnabled, isRecording, stopRecording, startRecording, setAvatarState]);
+  }, [isRecording, stopRecording, startRecording, setAvatarState]);
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden">
+    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* Background */}
       {selectedBackground ? (
         <div className="fixed inset-0 z-0">
@@ -480,8 +460,11 @@ export default function ChatView() {
         )}
       </div>
 
-      {/* Bottom input area - always visible */}
-      <div className="relative z-10 bg-gray-950/95 backdrop-blur-sm border-t border-white/10 px-3 py-2 pb-3 flex-shrink-0">
+      {/* Bottom input area - always visible, respects safe area bottom */}
+      <div
+        className="relative z-10 bg-gray-950/95 backdrop-blur-sm border-t border-white/10 px-3 py-2 flex-shrink-0"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+      >
         <form onSubmit={handleTextSubmit} className="flex gap-2 items-end">
           <input
             ref={textInputRef}
@@ -499,34 +482,28 @@ export default function ChatView() {
             disabled={isLoading}
           />
 
-          {/* Mic button - only shows if enabled in settings */}
-          {micEnabled && (
-            <button
-              type="button"
-              onClick={handleMicPress}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
-                isRecording
-                  ? 'bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300/50 shadow-lg shadow-rose-500/30 animate-pulse'
-                  : avatarState === 'thinking'
-                  ? 'bg-amber-500/20 border border-amber-500/30 cursor-wait'
-                  : 'bg-white/5 border border-white/10 hover:bg-white/10'
-              }`}
-              disabled={isLoading}
-              title={isRecording ? 'إيقاف التسجيل' : 'تسجيل صوتي'}
-            >
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : isRecording ? (
-                <div className="w-3.5 h-3.5 bg-white rounded-sm" />
-              ) : (
-                <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" x2="12" y1="19" y2="22"/>
-                </svg>
-              )}
-            </button>
-          )}
+          {/* Mic button - always visible for voice input */}
+          <button
+            type="button"
+            onClick={handleMicPress}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+              isRecording
+                ? 'bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300/50 shadow-lg shadow-rose-500/30 animate-pulse'
+                : avatarState === 'thinking'
+                ? 'bg-amber-500/20 border border-amber-500/30 cursor-wait'
+                : 'bg-white/5 border border-white/10 hover:bg-white/10'
+            }`}
+            disabled={isLoading}
+            title={isRecording ? 'إيقاف التسجيل' : 'تسجيل صوتي'}
+          >
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isRecording ? (
+              <div className="w-3.5 h-3.5 bg-white rounded-sm" />
+            ) : (
+              <Mic className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
 
           <button
             type="submit"
@@ -541,8 +518,6 @@ export default function ChatView() {
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        micEnabled={micEnabled}
-        onMicToggle={handleMicToggle}
       />
     </div>
   );

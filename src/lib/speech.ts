@@ -568,9 +568,12 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
   const encodedText = encodeURIComponent(text);
 
   // Try multiple Google TTS URL variants for maximum compatibility
+  // Added more client variants and tw-ob variant which is more reliable
   const urls = [
+    `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
     `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
     `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=ob&q=${encodedText}`,
+    `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
     `https://translate.googleapis.com/g_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
   ];
 
@@ -581,6 +584,7 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
         method: 'GET',
         headers: {
           'Accept': 'audio/mpeg,audio/mp3,*/*',
+          'User-Agent': 'Mozilla/5.0',
         },
       });
 
@@ -602,6 +606,28 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
     } catch (err) {
       console.warn('TTS: Fetch error for URL variant:', err);
     }
+  }
+
+  // Last resort: try direct audio element (works in some WebView configurations)
+  // This doesn't use fetch so avoids CORS, but may not work everywhere
+  console.log('TTS: Trying direct audio URL playback...');
+  try {
+    const directUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = directUrl;
+    // Test if it can play
+    const canPlay = await new Promise<boolean>((resolve) => {
+      audio.oncanplaythrough = () => resolve(true);
+      audio.onerror = () => resolve(false);
+      setTimeout(() => resolve(false), 3000);
+    });
+    if (canPlay) {
+      console.log('TTS: Direct audio URL works!');
+      return directUrl; // Return URL directly, not a blob URL
+    }
+  } catch (_e) {
+    // ignore
   }
 
   return null;
@@ -674,10 +700,15 @@ async function speakWithGoogleTTS(
       return;
     }
 
-    // Create audio element from blob URL (no CORS issues since it's a local blob)
+    // Create audio element
+    const isBlobUrl = blobUrl.startsWith('blob:');
     const audio = new Audio(blobUrl);
     audio.preload = 'auto';
     // NOTE: Do NOT set crossOrigin on blob URLs - it will cause CORS failures
+    // For direct URLs, crossOrigin may help with some WebView configurations
+    if (!isBlobUrl) {
+      audio.crossOrigin = 'anonymous';
+    }
     audioElement = audio;
 
     audio.onplaying = () => {
@@ -696,12 +727,14 @@ async function speakWithGoogleTTS(
       if (thisGeneration !== currentSpeechGeneration) return;
       console.log('TTS: Audio chunk ended');
       chunkIndex++;
-      // Clean up the blob URL after use
-      try {
-        URL.revokeObjectURL(blobUrl);
-        const idx = activeBlobUrls.indexOf(blobUrl);
-        if (idx !== -1) activeBlobUrls.splice(idx, 1);
-      } catch (_e) { /* ignore */ }
+      // Clean up the blob URL after use (only for blob: URLs)
+      if (isBlobUrl) {
+        try {
+          URL.revokeObjectURL(blobUrl);
+          const idx = activeBlobUrls.indexOf(blobUrl);
+          if (idx !== -1) activeBlobUrls.splice(idx, 1);
+        } catch (_e) { /* ignore */ }
+      }
       // Small gap between chunks
       setTimeout(playNextChunk, 150);
     };
@@ -709,12 +742,14 @@ async function speakWithGoogleTTS(
     audio.onerror = (e) => {
       console.warn('TTS: Audio play error:', e);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up
-      try {
-        URL.revokeObjectURL(blobUrl);
-        const idx = activeBlobUrls.indexOf(blobUrl);
-        if (idx !== -1) activeBlobUrls.splice(idx, 1);
-      } catch (_e) { /* ignore */ }
+      // Clean up (only for blob: URLs)
+      if (isBlobUrl) {
+        try {
+          URL.revokeObjectURL(blobUrl);
+          const idx = activeBlobUrls.indexOf(blobUrl);
+          if (idx !== -1) activeBlobUrls.splice(idx, 1);
+        } catch (_e) { /* ignore */ }
+      }
       // Try next chunk or end
       chunkIndex++;
       if (chunkIndex < chunks.length) {
@@ -732,12 +767,14 @@ async function speakWithGoogleTTS(
     } catch (err) {
       console.warn('TTS: play() failed:', err);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up
-      try {
-        URL.revokeObjectURL(blobUrl);
-        const idx = activeBlobUrls.indexOf(blobUrl);
-        if (idx !== -1) activeBlobUrls.splice(idx, 1);
-      } catch (_e) { /* ignore */ }
+      // Clean up (only for blob: URLs)
+      if (isBlobUrl) {
+        try {
+          URL.revokeObjectURL(blobUrl);
+          const idx = activeBlobUrls.indexOf(blobUrl);
+          if (idx !== -1) activeBlobUrls.splice(idx, 1);
+        } catch (_e) { /* ignore */ }
+      }
       // Try next chunk
       chunkIndex++;
       if (chunkIndex < chunks.length) {

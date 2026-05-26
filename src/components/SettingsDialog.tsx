@@ -254,11 +254,9 @@ function MemoryEditor({
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
-  micEnabled?: boolean;
-  onMicToggle?: (enabled: boolean) => void;
 }
 
-export default function SettingsDialog({ open, onClose, micEnabled = false, onMicToggle }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const {
     selectedModel,
     responseLanguage,
@@ -327,6 +325,11 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
     modelChanged
   );
 
+  // Also track direct key input changes for the save button
+  const [manualKeyChanged, setManualKeyChanged] = useState(false);
+
+  const showSaveButton = hasChanges || manualKeyChanged;
+
   // Sync temp memory when permanent memory changes externally
   useEffect(() => {
     setTempMemory(permanentMemory);
@@ -341,6 +344,7 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
       setVerifyResult(null);
       setKeyChanged(false);
       setModelChanged(false);
+      setManualKeyChanged(false);
     }
   }, [open, responseLanguage, selectedBackground, permanentMemory]);
 
@@ -357,6 +361,7 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
     // Key and model changes are already applied immediately
     setKeyChanged(false);
     setModelChanged(false);
+    setManualKeyChanged(false);
     onClose();
   };
 
@@ -731,7 +736,7 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
                             <input
                               type={showKeyPassword ? 'text' : 'password'}
                               value={manualKeyInput}
-                              onChange={(e) => { setManualKeyInput(e.target.value); setAddKeyError(null); setAddKeySuccess(false); }}
+                              onChange={(e) => { setManualKeyInput(e.target.value); setAddKeyError(null); setAddKeySuccess(false); setManualKeyChanged(true); }}
                               placeholder="الصق المفتاح هنا..."
                               className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
                               dir="ltr"
@@ -939,59 +944,23 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
                 </p>
               </SettingSection>
 
-              {/* ===== Microphone ===== */}
-              <SettingSection icon={(
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" x2="12" y1="19" y2="22"/>
-                </svg>
-              )} label="الميكروفون">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/[0.06]">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${micEnabled ? 'bg-emerald-500/20' : 'bg-white/10'}`}>
-                        <svg className={`w-4 h-4 ${micEnabled ? 'text-emerald-400' : 'text-gray-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                          <line x1="12" x2="12" y1="19" y2="22"/>
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm text-white font-medium">الإدخال الصوتي</p>
-                        <p className="text-[10px] text-gray-500">
-                          {micEnabled ? 'مفعّل - يظهر زر الميكروفون' : 'معطّل - الإدخال النصي فقط'}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => onMicToggle?.(!micEnabled)}
-                      className={`w-12 h-7 rounded-full transition-all duration-200 flex items-center ${
-                        micEnabled
-                          ? 'bg-emerald-500 justify-end'
-                          : 'bg-white/10 justify-start'
-                      }`}
-                    >
-                      <div className="w-5 h-5 rounded-full bg-white shadow-md mx-1" />
-                    </button>
+              {/* ===== Voice (read-only indicator, voice is always on) ===== */}
+              <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-500/20 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/20 flex items-center justify-center text-lg">
+                    🔊
                   </div>
-                  <div className="bg-white/5 rounded-xl p-3 border border-white/[0.06]">
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">
-                        {tempLanguage === 'ar' ? '🔊' : tempLanguage === 'en' ? '🔊' : '🔊'}
-                      </div>
-                      <div>
-                        <p className="text-sm text-white font-medium">
-                          {tempLanguage === 'ar' ? 'صوت دائم' : tempLanguage === 'en' ? 'Always Voice' : '常に音声'}
-                        </p>
-                        <p className="text-[10px] text-emerald-400">
-                          جميع الردود صوتية - الأفاتار يتحدث دائماً
-                        </p>
-                      </div>
-                    </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-white font-medium">
+                      {tempLanguage === 'ar' ? 'صوت دائم' : tempLanguage === 'en' ? 'Always Voice' : '常に音声'}
+                    </p>
+                    <p className="text-[10px] text-emerald-400">
+                      جميع الردود صوتية - الأفاتار يتحدث دائماً
+                    </p>
                   </div>
+                  <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
-              </SettingSection>
+              </div>
 
               {/* ===== Backgrounds ===== */}
               <SettingSection icon={<Palette className="w-4 h-4" />} label="خلفية الأفاتار" defaultOpen={false}>
@@ -1092,7 +1061,7 @@ export default function SettingsDialog({ open, onClose, micEnabled = false, onMi
           <div className="sticky bottom-0 z-10 bg-gray-900/95 backdrop-blur-xl border-t border-white/10 px-5 py-4">
             <button
               onClick={handleSave}
-              disabled={!hasChanges}
+              disabled={!showSaveButton}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:from-gray-700 disabled:to-gray-800 disabled:text-gray-500 text-white font-semibold transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 disabled:shadow-none"
             >
               <Save className="w-4 h-4" />
