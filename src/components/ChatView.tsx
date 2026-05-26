@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Mic,
-  MicOff,
   Send,
-  VolumeX,
-  Volume2,
   MessageSquare,
-  Keyboard,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
@@ -37,6 +34,7 @@ export default function ChatView() {
     addMessage,
     isLoading,
     setIsLoading,
+    error,
     setError,
     setAppState,
     selectedBackground,
@@ -54,13 +52,32 @@ export default function ChatView() {
   const [isRecording, setIsRecording] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showTextInput, setShowTextInput] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  // Load mic preference from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('alisha-mic-enabled');
+    if (saved === 'true') setMicEnabled(true);
+  }, []);
+
+  const handleMicToggle = useCallback((enabled: boolean) => {
+    setMicEnabled(enabled);
+    localStorage.setItem('alisha-mic-enabled', String(enabled));
+    if (!enabled && isRecording) {
+      const recognition = recognitionRef.current as { stop: () => void; abort: () => void } | null;
+      if (recognition) {
+        try { recognition.stop(); } catch (_e) { recognition.abort(); }
+      }
+      setIsRecording(false);
+      setAvatarState('idle');
+    }
+  }, [isRecording, setAvatarState]);
 
   // Initialize TTS and voices on mount
   useEffect(() => {
@@ -81,26 +98,6 @@ export default function ChatView() {
     };
   }, []);
 
-  // Detect keyboard visibility using visualViewport API
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    function handleResize() {
-      const keyboardUp = vv.height < window.innerHeight * 0.85;
-      setKeyboardVisible(keyboardUp);
-    }
-
-    vv.addEventListener('resize', handleResize);
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      vv.removeEventListener('resize', handleResize);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-
   // Auto-dismiss key switch notice
   useEffect(() => {
     if (keySwitchNotice) {
@@ -108,6 +105,14 @@ export default function ChatView() {
       return () => clearTimeout(timer);
     }
   }, [keySwitchNotice]);
+
+  // Auto-dismiss error
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, setError]);
 
   const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
 
@@ -208,17 +213,6 @@ export default function ChatView() {
     setAvatarState('idle');
   }, [setAvatarState]);
 
-  const toggleRecording = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      cancelSpeech();
-      setIsSpeaking(false);
-      setAvatarState('idle');
-      startRecording();
-    }
-  }, [isRecording, stopRecording, startRecording, setAvatarState]);
-
   // --- Send Message to AI ---
   const sendUserMessage = useCallback(
     async (text: string, retryCount = 0, isRetry = false) => {
@@ -239,10 +233,9 @@ export default function ChatView() {
       setIsLoading(true);
       setAvatarState('thinking');
 
-      // Stop any current speech
+      // Cancel any current speech before sending new message
       cancelSpeech();
       setIsSpeaking(false);
-      setShowTextInput(false);
 
       try {
         const chatMessages = [
@@ -264,23 +257,23 @@ export default function ChatView() {
             );
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : '';
-            
+
             if (errorMsg === 'RATE_LIMITED' || errorMsg === 'KEY_EXPIRED') {
               if (retryCount < 5) {
                 // Mark current key as exhausted
                 markKeyExhausted(selectedFreeKey.id);
-                
+
                 // Try switching to next available key
                 const nextKey = switchToNextAvailableKey();
-                
+
                 if (nextKey) {
                   setKeySwitchNotice(`تم التبديل إلى مفتاح: ${nextKey.category} - ${nextKey.model}`);
-                  
+
                   // If the model changed, update it
                   if (nextKey.model !== selectedModel) {
                     setSelectedModel(nextKey.model);
                   }
-                  
+
                   // Retry with new key (isRetry = true to avoid duplicate user message)
                   setIsLoading(false);
                   setAvatarState('idle');
@@ -320,7 +313,7 @@ export default function ChatView() {
         };
         addMessage(assistantMsg);
 
-        // Always speak the response (voice-only mode)
+        // Always speak the response - voice is always on, no way to disable
         const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
         setTimeout(() => {
           speakText(
@@ -357,71 +350,17 @@ export default function ChatView() {
     [textInput, sendUserMessage]
   );
 
-  const stopSpeaking = useCallback(() => {
-    cancelSpeech();
-    setIsSpeaking(false);
-    setAvatarState('idle');
-  }, [setAvatarState]);
-
-  // When keyboard is visible, show compact layout
-  if (keyboardVisible && showTextInput) {
-    return (
-      <div className="h-[100dvh] flex flex-col bg-gray-950">
-        <div className="flex items-center justify-between px-4 py-2 bg-black/30 border-b border-white/10">
-          <p className="text-xs text-gray-400 truncate">{selectedModel}</p>
-          <button
-            onClick={() => { setShowTextInput(false); setKeyboardVisible(false); }}
-            className="text-xs text-emerald-400 px-2"
-          >
-            {responseLanguage === 'ar' ? 'إخفاء' : responseLanguage === 'en' ? 'Hide' : '閉じる'}
-          </button>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3">
-          {avatarState === 'thinking' && (
-            <div className="w-10 h-10 border-3 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-          )}
-          {lastUserText && avatarState !== 'idle' && (
-            <div className="bg-white/5 rounded-xl px-4 py-2 border border-white/10 max-w-xs">
-              <p className="text-xs text-emerald-300 text-center">{lastUserText}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-gray-950/95 border-t border-white/10 px-3 py-2 pb-3">
-          <form onSubmit={handleTextSubmit} className="flex gap-2">
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder={
-                responseLanguage === 'ar'
-                  ? 'اكتب رسالتك...'
-                  : responseLanguage === 'en'
-                  ? 'Type your message...'
-                  : 'メッセージを入力...'
-              }
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
-              disabled={isLoading}
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={!textInput.trim() || isLoading}
-              className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              <Send className="w-4 h-4 text-emerald-400" />
-            </button>
-          </form>
-        </div>
-
-        <SettingsDialog
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
-      </div>
-    );
-  }
+  const handleMicPress = useCallback(() => {
+    if (!micEnabled) return;
+    if (isRecording) {
+      stopRecording();
+    } else {
+      cancelSpeech();
+      setIsSpeaking(false);
+      setAvatarState('idle');
+      startRecording();
+    }
+  }, [micEnabled, isRecording, stopRecording, startRecording, setAvatarState]);
 
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden">
@@ -442,15 +381,15 @@ export default function ChatView() {
         </div>
       )}
 
-      {/* Top bar */}
-      <header className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/20 backdrop-blur-sm flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-            <MessageSquare className="w-4 h-4 text-white" />
+      {/* Top bar - compact, respects safe area */}
+      <header className="relative z-10 flex items-center justify-between px-3 py-2 bg-black/30 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <MessageSquare className="w-3.5 h-3.5 text-white" />
           </div>
-          <div>
-            <h1 className="text-sm font-semibold text-white" dir="ltr">{selectedModel}</h1>
-            <p className="text-xs text-gray-500">
+          <div className="min-w-0">
+            <h1 className="text-xs font-semibold text-white truncate max-w-[160px]" dir="ltr">{selectedModel}</h1>
+            <p className="text-[10px] text-gray-500">
               {responseLanguage === 'ar' ? 'عربي' : responseLanguage === 'en' ? 'English' : '日本語'}
               {isUsingFreeKey && selectedFreeKey && (
                 <span className="text-emerald-500"> · {selectedFreeKey.category}</span>
@@ -458,34 +397,39 @@ export default function ChatView() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={stopSpeaking}
-            className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-            title="إيقاف الصوت"
-          >
-            {isSpeaking ? (
-              <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
-            ) : (
-              <VolumeX className="w-4 h-4 text-gray-400" />
-            )}
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="w-9 h-9 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
-            title="الإعدادات"
-          >
-            <img
-              src="/settings-icon.png"
-              alt="Settings"
-              className="w-6 h-6 rounded object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          </button>
-        </div>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className="w-8 h-8 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center hover:bg-white/10 transition-colors"
+          title="الإعدادات"
+        >
+          <img
+            src="/settings-icon.png"
+            alt="Settings"
+            className="w-5 h-5 rounded object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </button>
       </header>
+
+      {/* Error display */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="relative z-20 bg-red-500/20 border-b border-red-500/30 px-4 py-2 flex items-center gap-2"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+            <p className="text-xs text-red-300 flex-1">{error}</p>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Key switch notice */}
       {keySwitchNotice && (
@@ -508,128 +452,97 @@ export default function ChatView() {
           </div>
         </div>
 
-        {/* Status overlay */}
-        <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none">
+        {/* Status overlay - user text */}
+        <div className="absolute top-4 left-0 right-0 flex justify-center pointer-events-none">
           {lastUserText && avatarState !== 'idle' && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="bg-black/40 backdrop-blur-sm rounded-2xl px-5 py-2.5 border border-white/10 max-w-sm"
+              className="bg-black/40 backdrop-blur-sm rounded-2xl px-4 py-2 border border-white/10 max-w-xs"
             >
-              <p className="text-sm text-emerald-300 text-center truncate">{lastUserText}</p>
+              <p className="text-xs text-emerald-300 text-center truncate">{lastUserText}</p>
             </motion.div>
           )}
         </div>
 
-        {/* Interim text overlay */}
+        {/* Interim text overlay (speech recognition) */}
         {interimText && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="absolute top-16 left-0 right-0 flex justify-center pointer-events-none"
+            className="absolute top-14 left-0 right-0 flex justify-center pointer-events-none"
           >
-            <div className="bg-emerald-500/20 backdrop-blur-sm rounded-2xl px-5 py-2.5 border border-emerald-500/30 max-w-sm">
-              <p className="text-sm text-emerald-200 text-center">{interimText}</p>
+            <div className="bg-emerald-500/20 backdrop-blur-sm rounded-2xl px-4 py-2 border border-emerald-500/30 max-w-xs">
+              <p className="text-xs text-emerald-200 text-center">{interimText}</p>
             </div>
           </motion.div>
         )}
+      </div>
 
-        {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-950/90 via-gray-950/50 to-transparent">
-          {showTextInput && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-4"
+      {/* Bottom input area - always visible */}
+      <div className="relative z-10 bg-gray-950/95 backdrop-blur-sm border-t border-white/10 px-3 py-2 pb-3 flex-shrink-0">
+        <form onSubmit={handleTextSubmit} className="flex gap-2 items-end">
+          <input
+            ref={textInputRef}
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={
+              responseLanguage === 'ar'
+                ? 'اكتب رسالتك...'
+                : responseLanguage === 'en'
+                ? 'Type your message...'
+                : 'メッセージを入力...'
+            }
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
+            disabled={isLoading}
+          />
+
+          {/* Mic button - only shows if enabled in settings */}
+          {micEnabled && (
+            <button
+              type="button"
+              onClick={handleMicPress}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+                isRecording
+                  ? 'bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300/50 shadow-lg shadow-rose-500/30 animate-pulse'
+                  : avatarState === 'thinking'
+                  ? 'bg-amber-500/20 border border-amber-500/30 cursor-wait'
+                  : 'bg-white/5 border border-white/10 hover:bg-white/10'
+              }`}
+              disabled={isLoading}
+              title={isRecording ? 'إيقاف التسجيل' : 'تسجيل صوتي'}
             >
-              <form onSubmit={handleTextSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  placeholder={
-                    responseLanguage === 'ar'
-                      ? 'اكتب رسالتك...'
-                      : responseLanguage === 'en'
-                      ? 'Type your message...'
-                      : 'メッセージを入力...'
-                  }
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
-                  disabled={isLoading}
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  disabled={!textInput.trim() || isLoading}
-                  className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                >
-                  <Send className="w-4 h-4 text-emerald-400" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTextInput(false)}
-                  className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all"
-                >
-                  <Mic className="w-4 h-4 text-gray-400" />
-                </button>
-              </form>
-            </motion.div>
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : isRecording ? (
+                <div className="w-3.5 h-3.5 bg-white rounded-sm" />
+              ) : (
+                <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" x2="12" y1="19" y2="22"/>
+                </svg>
+              )}
+            </button>
           )}
 
-          {!showTextInput && (
-            <div className="flex items-center justify-center gap-6">
-              {isSpeaking && (
-                <motion.button
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  onClick={stopSpeaking}
-                  className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center hover:bg-rose-500/30 transition-all"
-                  title="إيقاف"
-                >
-                  <span className="w-5 h-5 bg-rose-400 rounded-sm" />
-                </motion.button>
-              )}
-
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={toggleRecording}
-                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl ${
-                  isRecording
-                    ? 'bg-gradient-to-br from-rose-500 to-red-600 border-2 border-rose-300 shadow-rose-500/50 scale-110'
-                    : avatarState === 'thinking'
-                    ? 'bg-amber-500/20 border-2 border-amber-500/50 shadow-amber-500/20 cursor-wait'
-                    : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-2 border-emerald-300/50 shadow-emerald-500/40 hover:scale-105'
-                }`}
-              >
-                {isLoading ? (
-                  <div className="w-8 h-8 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : isRecording ? (
-                  <MicOff className="w-8 h-8 text-white" />
-                ) : (
-                  <Mic className="w-8 h-8 text-white" />
-                )}
-              </motion.button>
-
-              {!isLoading && avatarState === 'idle' && !isSpeaking && (
-                <motion.button
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  onClick={() => setShowTextInput(true)}
-                  className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all"
-                  title="إدخال نصي"
-                >
-                  <Keyboard className="w-5 h-5 text-gray-400" />
-                </motion.button>
-              )}
-            </div>
-          )}
-        </div>
+          <button
+            type="submit"
+            disabled={!textInput.trim() || isLoading}
+            className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex-shrink-0"
+          >
+            <Send className="w-4 h-4 text-emerald-400" />
+          </button>
+        </form>
       </div>
 
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        micEnabled={micEnabled}
+        onMicToggle={handleMicToggle}
       />
     </div>
   );

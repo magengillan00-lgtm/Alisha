@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe,
-  Volume2,
   Cpu,
   LogOut,
   X,
@@ -255,9 +254,11 @@ function MemoryEditor({
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
+  micEnabled?: boolean;
+  onMicToggle?: (enabled: boolean) => void;
 }
 
-export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose, micEnabled = false, onMicToggle }: SettingsDialogProps) {
   const {
     selectedModel,
     responseLanguage,
@@ -314,10 +315,16 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [showBgPopup, setShowBgPopup] = useState(false);
   const [tempMemory, setTempMemory] = useState<MemoryItem[]>(permanentMemory);
 
+  // Track key/model changes for save button
+  const [keyChanged, setKeyChanged] = useState(false);
+  const [modelChanged, setModelChanged] = useState(false);
+
   const hasChanges = (
     tempLanguage !== responseLanguage ||
     tempBackground !== selectedBackground ||
-    JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory)
+    JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory) ||
+    keyChanged ||
+    modelChanged
   );
 
   // Sync temp memory when permanent memory changes externally
@@ -332,6 +339,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setTempBackground(selectedBackground);
       setTempMemory(permanentMemory);
       setVerifyResult(null);
+      setKeyChanged(false);
+      setModelChanged(false);
     }
   }, [open, responseLanguage, selectedBackground, permanentMemory]);
 
@@ -345,6 +354,9 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory)) {
       setPermanentMemory(tempMemory);
     }
+    // Key and model changes are already applied immediately
+    setKeyChanged(false);
+    setModelChanged(false);
     onClose();
   };
 
@@ -403,6 +415,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearMessages();
       setShowFreeKeysList(false);
       setShowKeySection(false);
+      setKeyChanged(true); // Mark as changed so Save button appears
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'فشل في جلب الموديلات';
       setAddKeyError(msg);
@@ -428,6 +441,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setAddKeySuccess(true);
       setManualKeyInput('');
       clearMessages();
+      setKeyChanged(true); // Mark as changed so Save button appears
       setTimeout(() => setAddKeySuccess(false), 2000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'فشل في التحقق من المفتاح';
@@ -451,6 +465,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         setSelectedModel(data.models[0]);
       }
       setShowKeySection(false);
+      setKeyChanged(true); // Mark as changed so Save button appears
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'فشل في جلب الموديلات';
       setAddKeyError(msg);
@@ -488,6 +503,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setSelectedModel(model);
     clearMessages();
     setShowModelSection(false);
+    setModelChanged(true); // Mark as changed so Save button appears
   };
 
   const filteredModels = models.filter((m) =>
@@ -923,20 +939,55 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </p>
               </SettingSection>
 
-              {/* ===== Voice ===== */}
-              <SettingSection icon={<Volume2 className="w-4 h-4" />} label="الصوت">
-                <div className="bg-white/5 rounded-xl p-3 border border-white/[0.06]">
-                  <div className="flex items-center gap-3">
-                    <div className="text-2xl">
-                      {tempLanguage === 'ar' ? '🇸🇦' : tempLanguage === 'en' ? '🇺🇸' : '🇯🇵'}
+              {/* ===== Microphone ===== */}
+              <SettingSection icon={(
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" x2="12" y1="19" y2="22"/>
+                </svg>
+              )} label="الميكروفون">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/[0.06]">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${micEnabled ? 'bg-emerald-500/20' : 'bg-white/10'}`}>
+                        <svg className={`w-4 h-4 ${micEnabled ? 'text-emerald-400' : 'text-gray-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                          <line x1="12" x2="12" y1="19" y2="22"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm text-white font-medium">الإدخال الصوتي</p>
+                        <p className="text-[10px] text-gray-500">
+                          {micEnabled ? 'مفعّل - يظهر زر الميكروفون' : 'معطّل - الإدخال النصي فقط'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-white font-medium">
-                        {tempLanguage === 'ar' ? 'صوت عربي' : tempLanguage === 'en' ? 'English Voice' : '日本語音声'}
-                      </p>
-                      <p className="text-[10px] text-emerald-400">
-                        جميع الردود صوتية - الأفاتار يتحدث بالصوت
-                      </p>
+                    <button
+                      onClick={() => onMicToggle?.(!micEnabled)}
+                      className={`w-12 h-7 rounded-full transition-all duration-200 flex items-center ${
+                        micEnabled
+                          ? 'bg-emerald-500 justify-end'
+                          : 'bg-white/10 justify-start'
+                      }`}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-white shadow-md mx-1" />
+                    </button>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3 border border-white/[0.06]">
+                    <div className="flex items-center gap-3">
+                      <div className="text-2xl">
+                        {tempLanguage === 'ar' ? '🔊' : tempLanguage === 'en' ? '🔊' : '🔊'}
+                      </div>
+                      <div>
+                        <p className="text-sm text-white font-medium">
+                          {tempLanguage === 'ar' ? 'صوت دائم' : tempLanguage === 'en' ? 'Always Voice' : '常に音声'}
+                        </p>
+                        <p className="text-[10px] text-emerald-400">
+                          جميع الردود صوتية - الأفاتار يتحدث دائماً
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
