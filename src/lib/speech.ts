@@ -31,10 +31,12 @@ interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
+  maxAlternatives: number;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
+  onspeechend: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
@@ -68,12 +70,32 @@ const VOICE_NAMES: Record<string, string[]> = {
   ja: ['Google 日本語', 'Kyoko', 'Otoya', 'Microsoft Haruka', 'Microsoft Ayumi'],
 };
 
+// ============ PLATFORM DETECTION ============
+
+let isAndroidWebView = false;
+let isIOSWebView = false;
+let isMobile = false;
+
+function detectPlatform(): void {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+
+  const ua = navigator.userAgent || '';
+  isAndroidWebView = /Android/.test(ua) && /wv|Capacitor/.test(ua);
+  isIOSWebView = /iPhone|iPad|iPod/.test(ua) && /wv|Capacitor/.test(ua);
+  isMobile = /Android|iPhone|iPad|iPod|Mobile/.test(ua);
+
+  console.log('TTS: Platform detected - Android WV:', isAndroidWebView, 'iOS WV:', isIOSWebView, 'Mobile:', isMobile);
+}
+
+// Detect platform on load
+detectPlatform();
+
 // ============ TTS STATE ============
 
 let currentSpeechGeneration = 0;
 let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 let audioElement: HTMLAudioElement | null = null;
-let useWebSpeechAPI = true; // Try Web Speech API first, fall back to Google TTS
+let useWebSpeechAPI = true;
 
 // Detect if Web Speech API actually works (Android WebView reports it exists but doesn't work)
 let speechAPITested = false;
@@ -86,13 +108,23 @@ let audioUnlocked = false;
 // Blob URLs to clean up
 let activeBlobUrls: string[] = [];
 
+// Track if we're currently speaking
+let isCurrentlySpeaking = false;
+
+/**
+ * Check if TTS is currently speaking
+ */
+export function isSpeaking(): boolean {
+  return isCurrentlySpeaking;
+}
+
 /**
  * Unlock audio playback on mobile WebView.
  * Must be called from a user gesture (touch/click).
  * Creates a silent AudioContext to bypass autoplay restrictions.
  */
 export function unlockAudio(): void {
-  if (audioUnlocked || typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return;
 
   try {
     // Create and resume an AudioContext to unlock audio on mobile
@@ -107,7 +139,6 @@ export function unlockAudio(): void {
         audioUnlocked = true;
         console.log('TTS: Audio context unlocked');
       }).catch(() => {
-        // Fallback: still try to play
         audioUnlocked = true;
       });
     } else if (audioContext) {
@@ -118,17 +149,19 @@ export function unlockAudio(): void {
     // Also play a tiny silent audio to fully unlock the audio element
     const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
     silentAudio.volume = 0.01;
-    silentAudio.play().then(() => {
-      audioUnlocked = true;
-      console.log('TTS: Audio element unlocked via silent play');
-      silentAudio.pause();
-      silentAudio.src = '';
-    }).catch(() => {
-      // Still mark as attempted
-      audioUnlocked = true;
-    });
+    const playPromise = silentAudio.play();
+    if (playPromise) {
+      playPromise.then(() => {
+        audioUnlocked = true;
+        console.log('TTS: Audio element unlocked via silent play');
+        silentAudio.pause();
+        silentAudio.src = '';
+      }).catch(() => {
+        audioUnlocked = true;
+      });
+    }
   } catch (_e) {
-    audioUnlocked = true; // Don't keep trying
+    audioUnlocked = true;
   }
 }
 
@@ -139,6 +172,12 @@ export function unlockAudio(): void {
 export async function testSpeechAPI(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
+  // On Android WebView, skip Web Speech API entirely - it never works reliably
+  if (isAndroidWebView) {
+    console.log('TTS: Android WebView detected - skipping Web Speech API test, using audio fallback');
+    return false;
+  }
+
   return new Promise((resolve) => {
     try {
       const synth = window.speechSynthesis;
@@ -146,7 +185,6 @@ export async function testSpeechAPI(): Promise<boolean> {
       // Wait for voices to load
       const voices = synth.getVoices();
       if (voices.length === 0) {
-        // Wait for onvoiceschanged with timeout
         synth.onvoiceschanged = () => {
           const v = synth.getVoices();
           resolve(v.length > 0);
@@ -180,7 +218,7 @@ export async function initTTS(): Promise<void> {
   } else {
     speechAPIWorks = false;
     useWebSpeechAPI = false;
-    console.log('TTS: Web Speech API unavailable, using Google Translate TTS');
+    console.log('TTS: Web Speech API unavailable, using audio TTS fallback');
   }
 }
 
@@ -190,6 +228,7 @@ export async function initTTS(): Promise<void> {
 export function cancelSpeech(): void {
   stopKeepAlive();
   currentSpeechGeneration++; // Invalidate any pending callbacks
+  isCurrentlySpeaking = false;
 
   if (typeof window === 'undefined') return;
 
@@ -206,6 +245,7 @@ export function cancelSpeech(): void {
       audioElement.pause();
       audioElement.currentTime = 0;
       audioElement.src = '';
+      audioElement.removeAttribute('src');
     } catch (_e) {
       // ignore
     }
@@ -310,15 +350,39 @@ export async function speakText(
     return;
   }
 
+  // Clean up text for TTS - remove markdown and special characters
+  const cleanText = text
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+    .replace(/\*(.*?)\*/g, '$1') // Remove italic
+    .replace(/#{1,6}\s/g, '') // Remove headers
+    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+    .replace(/`(.*?)`/g, '$1') // Remove inline code
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
+    .replace(/[-•*]\s/g, '') // Remove list markers
+    .replace(/\d+\.\s/g, '') // Remove numbered lists
+    .trim();
+
+  if (!cleanText) {
+    onEnd();
+    return;
+  }
+
   // Make sure TTS is initialized
   if (!speechAPITested) {
     await initTTS();
   }
 
+  // Make sure audio is unlocked
+  if (!audioUnlocked) {
+    unlockAudio();
+  }
+
+  isCurrentlySpeaking = true;
+
   if (useWebSpeechAPI) {
-    speakWithWebSpeech(text, lang, onEnd, onStart, rate);
+    speakWithWebSpeech(cleanText, lang, onEnd, onStart, rate);
   } else {
-    speakWithGoogleTTS(text, lang, onEnd, onStart);
+    speakWithGoogleTTS(cleanText, lang, onEnd, onStart);
   }
 }
 
@@ -383,6 +447,7 @@ function speakSingle(
     if (ended) return;
     ended = true;
     stopKeepAlive();
+    isCurrentlySpeaking = false;
     if (generation === currentSpeechGeneration) onEnd();
   };
 
@@ -392,10 +457,10 @@ function speakSingle(
     if (err.error === 'canceled' || err.error === 'interrupted') {
       ended = true;
       stopKeepAlive();
+      isCurrentlySpeaking = false;
       if (generation === currentSpeechGeneration) onEnd();
       return;
     }
-    // If Web Speech API fails, switch to Google TTS for this and future calls
     console.warn('Web Speech API error, switching to Google TTS:', err.error);
     useWebSpeechAPI = false;
     ended = true;
@@ -421,20 +486,6 @@ function speakSingle(
         }
       }
     }, 2000);
-
-    // Safety timeout
-    setTimeout(() => {
-      if (generation !== currentSpeechGeneration) return;
-      if (!started && !ended) {
-        console.warn('Web Speech timeout, using Google TTS');
-        useWebSpeechAPI = false;
-        ended = true;
-        stopKeepAlive();
-        if (generation === currentSpeechGeneration) {
-          speakWithGoogleTTS(text, lang, onEnd, onStart);
-        }
-      }
-    }, 4000);
   } catch (e) {
     console.error('Web Speech failed:', e);
     useWebSpeechAPI = false;
@@ -466,6 +517,7 @@ function speakInChunks(
     if (currentIndex >= sentences.length) {
       totalEnded = true;
       stopKeepAlive();
+      isCurrentlySpeaking = false;
       onEnd();
       return;
     }
@@ -509,10 +561,10 @@ function speakInChunks(
       if (err.error === 'canceled' || err.error === 'interrupted') {
         totalEnded = true;
         stopKeepAlive();
+        isCurrentlySpeaking = false;
         onEnd();
         return;
       }
-      // Switch to Google TTS on error
       console.warn('Chunk error, switching to Google TTS');
       useWebSpeechAPI = false;
       totalEnded = true;
@@ -536,9 +588,6 @@ function speakInChunks(
 }
 
 // ============ GOOGLE TRANSLATE TTS FALLBACK ============
-// Uses Google Translate's text-to-speech endpoint.
-// Audio is fetched as a blob to bypass CORS restrictions in Android WebView.
-// No API key required. Free for moderate use.
 
 function cancelAndWait(): Promise<void> {
   return new Promise((resolve) => {
@@ -568,13 +617,11 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
   const encodedText = encodeURIComponent(text);
 
   // Try multiple Google TTS URL variants for maximum compatibility
-  // Added more client variants and tw-ob variant which is more reliable
   const urls = [
     `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
     `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
-    `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=ob&q=${encodedText}`,
     `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
-    `https://translate.googleapis.com/g_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
+    `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=dict-chrome-ex&q=${encodedText}`,
   ];
 
   for (const url of urls) {
@@ -584,7 +631,6 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
         method: 'GET',
         headers: {
           'Accept': 'audio/mpeg,audio/mp3,*/*',
-          'User-Agent': 'Mozilla/5.0',
         },
       });
 
@@ -606,28 +652,6 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
     } catch (err) {
       console.warn('TTS: Fetch error for URL variant:', err);
     }
-  }
-
-  // Last resort: try direct audio element (works in some WebView configurations)
-  // This doesn't use fetch so avoids CORS, but may not work everywhere
-  console.log('TTS: Trying direct audio URL playback...');
-  try {
-    const directUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`;
-    const audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = directUrl;
-    // Test if it can play
-    const canPlay = await new Promise<boolean>((resolve) => {
-      audio.oncanplaythrough = () => resolve(true);
-      audio.onerror = () => resolve(false);
-      setTimeout(() => resolve(false), 3000);
-    });
-    if (canPlay) {
-      console.log('TTS: Direct audio URL works!');
-      return directUrl; // Return URL directly, not a blob URL
-    }
-  } catch (_e) {
-    // ignore
   }
 
   return null;
@@ -660,6 +684,7 @@ async function speakWithGoogleTTS(
   // Split text into chunks (Google TTS has ~200 char limit)
   const chunks = splitTextForGoogleTTS(text, 180);
   if (chunks.length === 0) {
+    isCurrentlySpeaking = false;
     onEnd();
     return;
   }
@@ -670,10 +695,14 @@ async function speakWithGoogleTTS(
 
   async function playNextChunk(): Promise<void> {
     // Check if this generation is still valid
-    if (thisGeneration !== currentSpeechGeneration) return;
+    if (thisGeneration !== currentSpeechGeneration) {
+      isCurrentlySpeaking = false;
+      return;
+    }
     if (chunkIndex >= chunks.length) {
       audioElement = null;
       cleanupBlobUrls();
+      isCurrentlySpeaking = false;
       if (thisGeneration === currentSpeechGeneration) {
         onEnd();
       }
@@ -685,7 +714,10 @@ async function speakWithGoogleTTS(
     // Fetch audio as blob to bypass CORS
     const blobUrl = await fetchTTSBlob(chunk, langCode);
 
-    if (thisGeneration !== currentSpeechGeneration) return;
+    if (thisGeneration !== currentSpeechGeneration) {
+      isCurrentlySpeaking = false;
+      return;
+    }
 
     if (!blobUrl) {
       console.warn('TTS: All fetch attempts failed for chunk', chunkIndex);
@@ -695,20 +727,16 @@ async function speakWithGoogleTTS(
       } else {
         audioElement = null;
         cleanupBlobUrls();
+        isCurrentlySpeaking = false;
         onEnd();
       }
       return;
     }
 
     // Create audio element
-    const isBlobUrl = blobUrl.startsWith('blob:');
     const audio = new Audio(blobUrl);
     audio.preload = 'auto';
-    // NOTE: Do NOT set crossOrigin on blob URLs - it will cause CORS failures
-    // For direct URLs, crossOrigin may help with some WebView configurations
-    if (!isBlobUrl) {
-      audio.crossOrigin = 'anonymous';
-    }
+    audio.volume = 1.0;
     audioElement = audio;
 
     audio.onplaying = () => {
@@ -727,36 +755,31 @@ async function speakWithGoogleTTS(
       if (thisGeneration !== currentSpeechGeneration) return;
       console.log('TTS: Audio chunk ended');
       chunkIndex++;
-      // Clean up the blob URL after use (only for blob: URLs)
-      if (isBlobUrl) {
-        try {
-          URL.revokeObjectURL(blobUrl);
-          const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
-      }
+      // Clean up the blob URL after use
+      try {
+        URL.revokeObjectURL(blobUrl);
+        const idx = activeBlobUrls.indexOf(blobUrl);
+        if (idx !== -1) activeBlobUrls.splice(idx, 1);
+      } catch (_e) { /* ignore */ }
       // Small gap between chunks
-      setTimeout(playNextChunk, 150);
+      setTimeout(playNextChunk, 100);
     };
 
     audio.onerror = (e) => {
       console.warn('TTS: Audio play error:', e);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up (only for blob: URLs)
-      if (isBlobUrl) {
-        try {
-          URL.revokeObjectURL(blobUrl);
-          const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
-      }
-      // Try next chunk or end
+      try {
+        URL.revokeObjectURL(blobUrl);
+        const idx = activeBlobUrls.indexOf(blobUrl);
+        if (idx !== -1) activeBlobUrls.splice(idx, 1);
+      } catch (_e) { /* ignore */ }
       chunkIndex++;
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 200);
       } else {
         audioElement = null;
         cleanupBlobUrls();
+        isCurrentlySpeaking = false;
         onEnd();
       }
     };
@@ -767,21 +790,18 @@ async function speakWithGoogleTTS(
     } catch (err) {
       console.warn('TTS: play() failed:', err);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up (only for blob: URLs)
-      if (isBlobUrl) {
-        try {
-          URL.revokeObjectURL(blobUrl);
-          const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
-      }
-      // Try next chunk
+      try {
+        URL.revokeObjectURL(blobUrl);
+        const idx = activeBlobUrls.indexOf(blobUrl);
+        if (idx !== -1) activeBlobUrls.splice(idx, 1);
+      } catch (_e) { /* ignore */ }
       chunkIndex++;
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 200);
       } else {
         audioElement = null;
         cleanupBlobUrls();
+        isCurrentlySpeaking = false;
         onEnd();
       }
     }
@@ -799,7 +819,6 @@ function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
 
   const chunks: string[] = [];
-  // Split by sentence terminators
   const sentences = text.match(/[^.!?。！？\n]+[.!?。！？\n]+/g) || [text];
 
   let current = '';
@@ -819,7 +838,6 @@ function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
     if (chunk.length <= maxLen) {
       finalChunks.push(chunk);
     } else {
-      // Split by commas or spaces
       const parts = chunk.split(/[,،、;；]\s*/);
       let sub = '';
       for (const part of parts) {
@@ -839,6 +857,10 @@ function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
 
 // ============ SPEECH RECOGNITION ============
 
+/**
+ * Create a speech recognition instance for voice input.
+ * Uses continuous mode so recording keeps going until manually stopped.
+ */
 export function createSpeechRecognition(
   lang: string,
   onResult: (transcript: string, isFinal: boolean) => void,
@@ -856,9 +878,10 @@ export function createSpeechRecognition(
   }
 
   const recognition = new SpeechRecognitionClass();
-  recognition.continuous = false;
+  recognition.continuous = true; // Keep listening until explicitly stopped
   recognition.interimResults = true;
   recognition.lang = lang;
+  recognition.maxAlternatives = 1;
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
     let finalTranscript = '';
@@ -918,4 +941,27 @@ export function initVoices(): Promise<SpeechSynthesisVoice[]> {
 interface SpeechSynthesisErrorEvent {
   readonly error: string;
   readonly message?: string;
+}
+
+// ============ PERMISSION HELPER ============
+
+/**
+ * Request microphone permission. Returns true if granted.
+ */
+export async function requestMicrophonePermission(): Promise<boolean> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+      console.warn('MediaDevices API not available');
+      return false;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Stop all tracks immediately - we just needed the permission
+    stream.getTracks().forEach(track => track.stop());
+    console.log('Microphone permission granted');
+    return true;
+  } catch (err) {
+    console.error('Microphone permission denied:', err);
+    return false;
+  }
 }

@@ -76,4 +76,6 @@ android/app/src/main/assets/public/
 *.db
 
 # Skills directory
-/skills/
+/skills/jdk/
+download/
+*.apk

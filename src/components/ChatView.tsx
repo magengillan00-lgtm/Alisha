@@ -7,10 +7,14 @@ import {
   MessageSquare,
   AlertTriangle,
   X,
+  Mic,
+  MicOff,
+  Square,
+  Type,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
+import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio, requestMicrophonePermission, isSpeaking as checkIsSpeaking } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
 import { sendFreeKeyMessage } from '@/lib/free-keys';
 import SettingsDialog from '@/components/SettingsDialog';
@@ -54,16 +58,29 @@ export default function ChatView() {
   const [lastUserText, setLastUserText] = useState('');
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  // Mic recording state - used by SettingsDialog, not shown on main screen
   const [isRecording, setIsRecording] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [accumulatedText, setAccumulatedText] = useState('');
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const isRecordingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
 
-  // Initialize TTS and voices on mount
+  // Keep refs in sync
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+
+  // Initialize TTS and voices on mount, and request mic permission
   useEffect(() => {
     initVoices();
     initTTS();
+
+    // Request microphone permission on mount
+    requestMicrophonePermission().then(granted => {
+      setMicPermissionGranted(granted);
+    });
 
     const handleFirstInteraction = () => {
       unlockAudio();
@@ -94,6 +111,13 @@ export default function ChatView() {
       return () => clearTimeout(timer);
     }
   }, [error, setError]);
+
+  // Focus text input when shown
+  useEffect(() => {
+    if (showTextInput && textInputRef.current) {
+      setTimeout(() => textInputRef.current?.focus(), 100);
+    }
+  }, [showTextInput]);
 
   const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
 
@@ -139,7 +163,7 @@ export default function ChatView() {
     return prompt;
   }, [responseLanguage, permanentMemory]);
 
-  // --- Speech Recognition (used by SettingsDialog mic) ---
+  // --- Voice Recording (Main Screen) ---
   const startRecording = useCallback(() => {
     const lang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
 
@@ -147,8 +171,12 @@ export default function ChatView() {
       lang,
       (transcript, isFinal) => {
         if (isFinal) {
+          // Accumulate final text
+          setAccumulatedText(prev => {
+            const newText = prev ? prev + ' ' + transcript : transcript;
+            return newText;
+          });
           setInterimText('');
-          sendUserMessage(transcript);
         } else {
           setInterimText(transcript);
         }
@@ -159,11 +187,31 @@ export default function ChatView() {
         setAvatarState('idle');
         if (err === 'not-allowed') {
           setError('يرجى السماح بالوصول إلى الميكروفون');
+          // Try requesting permission again
+          requestMicrophonePermission().then(granted => {
+            setMicPermissionGranted(granted);
+          });
         }
       },
       () => {
-        setIsRecording(false);
-        setAvatarState('idle');
+        // Recognition ended - if we were recording and it stopped on its own,
+        // auto-send the accumulated text
+        if (isRecordingRef.current) {
+          setIsRecording(false);
+          setAvatarState('idle');
+          // Auto-send accumulated text when recognition ends naturally
+          setAccumulatedText(prev => {
+            if (prev.trim()) {
+              // Use setTimeout to avoid state update during render
+              const text = prev.trim();
+              setTimeout(() => {
+                sendUserMessage(text);
+              }, 100);
+            }
+            return '';
+          });
+          setInterimText('');
+        }
       }
     );
 
@@ -175,10 +223,24 @@ export default function ChatView() {
     recognitionRef.current = recognition;
     unlockAudio();
     warmupSpeech();
-    recognition.start();
+
+    // Cancel any ongoing speech before recording
+    cancelSpeech();
+    setIsSpeaking(false);
+    setAvatarState('idle');
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start recognition:', err);
+      setError('فشل في بدء التعرف على الصوت');
+      return;
+    }
+
     setIsRecording(true);
     setAvatarState('listening');
     setInterimText('');
+    setAccumulatedText('');
   }, [responseLanguage, setError, setAvatarState]);
 
   const stopRecording = useCallback(() => {
@@ -192,25 +254,45 @@ export default function ChatView() {
     }
     setIsRecording(false);
     setAvatarState('idle');
+
+    // Send the accumulated text
+    setAccumulatedText(prev => {
+      if (prev.trim()) {
+        const text = prev.trim();
+        setTimeout(() => {
+          sendUserMessage(text);
+        }, 100);
+      }
+      return '';
+    });
+    setInterimText('');
   }, [setAvatarState]);
 
   const handleMicPress = useCallback(() => {
     if (isRecording) {
+      // Stop recording and send
       stopRecording();
-    } else {
+    } else if (isSpeaking) {
+      // Interrupt Alisha and start recording
       cancelSpeech();
       setIsSpeaking(false);
       setAvatarState('idle');
+      // Small delay then start recording
+      setTimeout(() => {
+        startRecording();
+      }, 200);
+    } else {
+      // Start recording
       startRecording();
     }
-  }, [isRecording, stopRecording, startRecording, setAvatarState]);
+  }, [isRecording, isSpeaking, stopRecording, startRecording]);
 
   // --- Send Message to AI ---
   const sendUserMessage = useCallback(
     async (text: string, retryCount = 0, isRetry = false) => {
       if (!text.trim() || isLoading) return;
 
-      // Only add user message if this is not a retry (fix duplicate message bug)
+      // Only add user message if this is not a retry
       if (!isRetry) {
         const userMsg = {
           id: Date.now().toString(),
@@ -238,7 +320,6 @@ export default function ChatView() {
         let responseText: string;
 
         if (isUsingFreeKey && selectedFreeKey) {
-          // Use free key API
           try {
             const systemPrompt = buildSystemPrompt();
             responseText = await sendFreeKeyMessage(
@@ -252,21 +333,14 @@ export default function ChatView() {
 
             if (errorMsg === 'RATE_LIMITED' || errorMsg === 'KEY_EXPIRED') {
               if (retryCount < 5) {
-                // Mark current key as exhausted
                 markKeyExhausted(selectedFreeKey.id);
-
-                // Try switching to next available key
                 const nextKey = switchToNextAvailableKey();
 
                 if (nextKey) {
                   setKeySwitchNotice(`تم التبديل إلى مفتاح: ${nextKey.category} - ${nextKey.model}`);
-
-                  // If the model changed, update it
                   if (nextKey.model !== selectedModel) {
                     setSelectedModel(nextKey.model);
                   }
-
-                  // Retry with new key (isRetry = true to avoid duplicate user message)
                   setIsLoading(false);
                   setAvatarState('idle');
                   setTimeout(() => sendUserMessage(text, retryCount + 1, true), 500);
@@ -281,7 +355,6 @@ export default function ChatView() {
             throw err;
           }
         } else {
-          // Use manual API key
           const activeKey = getActiveApiKey();
           if (!activeKey) {
             throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
@@ -313,7 +386,9 @@ export default function ChatView() {
             speechLang,
             () => {
               setIsSpeaking(false);
-              setAvatarState('idle');
+              if (!isRecordingRef.current) {
+                setAvatarState('idle');
+              }
             },
             () => {
               setIsSpeaking(true);
@@ -337,13 +412,21 @@ export default function ChatView() {
       e?.preventDefault();
       if (textInput.trim()) {
         sendUserMessage(textInput);
+        setShowTextInput(false);
       }
     },
     [textInput, sendUserMessage]
   );
 
+  // Get the full display text (accumulated + interim)
+  const fullDisplayText = accumulatedText
+    ? interimText
+      ? accumulatedText + ' ' + interimText
+      : accumulatedText
+    : interimText;
+
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden">
+    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Background */}
       {selectedBackground ? (
         <div className="fixed inset-0 z-0">
@@ -432,9 +515,9 @@ export default function ChatView() {
           </div>
         </div>
 
-        {/* Status overlay - user text */}
+        {/* Status overlay - last user text */}
         <div className="absolute top-4 left-0 right-0 flex justify-center pointer-events-none">
-          {lastUserText && avatarState !== 'idle' && (
+          {lastUserText && !isRecording && avatarState !== 'idle' && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -446,54 +529,169 @@ export default function ChatView() {
           )}
         </div>
 
-        {/* Interim text overlay (speech recognition) */}
-        {interimText && (
+        {/* Speech recognition overlay (while recording) */}
+        {isRecording && fullDisplayText && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="absolute top-14 left-0 right-0 flex justify-center pointer-events-none"
+            className="absolute top-14 left-0 right-0 flex justify-center pointer-events-none px-4"
           >
-            <div className="bg-emerald-500/20 backdrop-blur-sm rounded-2xl px-4 py-2 border border-emerald-500/30 max-w-xs">
-              <p className="text-xs text-emerald-200 text-center">{interimText}</p>
+            <div className="bg-emerald-500/20 backdrop-blur-sm rounded-2xl px-4 py-2 border border-emerald-500/30 max-w-sm">
+              <p className="text-sm text-emerald-200 text-center" dir="auto">{fullDisplayText}</p>
             </div>
+          </motion.div>
+        )}
+
+        {/* Recording indicator */}
+        {isRecording && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/20 backdrop-blur-sm rounded-full px-3 py-1.5 border border-red-500/30"
+          >
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] text-red-300">
+              {responseLanguage === 'ar' ? 'جاري التسجيل...' : responseLanguage === 'en' ? 'Recording...' : '録音中...'}
+            </span>
           </motion.div>
         )}
       </div>
 
-      {/* Bottom input area - text input + send button only, NO mic button */}
+      {/* Bottom input area - Mic button (primary) + Text toggle + Send */}
       <div
         className="relative z-10 bg-gray-950/95 backdrop-blur-sm border-t border-white/10 px-3 py-2 flex-shrink-0"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
       >
-        <form onSubmit={handleTextSubmit} className="flex gap-2 items-end">
-          <input
-            ref={textInputRef}
-            type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder={
-              responseLanguage === 'ar'
-                ? 'اكتب رسالتك...'
-                : responseLanguage === 'en'
-                ? 'Type your message...'
-                : 'メッセージを入力...'
-            }
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
-            disabled={isLoading}
-          />
-
+        <div className="flex gap-2 items-center justify-center">
+          {/* Text input toggle button */}
           <button
-            type="submit"
-            disabled={!textInput.trim() || isLoading}
-            className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex-shrink-0"
+            onClick={() => setShowTextInput(!showTextInput)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+              showTextInput
+                ? 'bg-white/10 border border-white/20'
+                : 'bg-white/5 border border-white/10 hover:bg-white/10'
+            }`}
+            title={responseLanguage === 'ar' ? 'إدخال نصي' : 'Text input'}
+          >
+            <Type className={`w-4 h-4 ${showTextInput ? 'text-emerald-400' : 'text-gray-400'}`} />
+          </button>
+
+          {/* Main mic button - primary input method */}
+          <button
+            onClick={handleMicPress}
+            disabled={isLoading && !isSpeaking}
+            className={`relative w-16 h-16 rounded-2xl flex items-center justify-center transition-all flex-shrink-0 ${
+              isRecording
+                ? 'bg-red-500/30 border-2 border-red-500/60 shadow-lg shadow-red-500/20'
+                : isSpeaking
+                ? 'bg-emerald-500/30 border-2 border-emerald-500/60 shadow-lg shadow-emerald-500/20 animate-pulse'
+                : 'bg-emerald-500/20 border-2 border-emerald-500/40 hover:bg-emerald-500/30 shadow-lg shadow-emerald-500/10'
+            }`}
+            title={
+              isRecording
+                ? (responseLanguage === 'ar' ? 'أوقف التسجيل' : 'Stop recording')
+                : isSpeaking
+                ? (responseLanguage === 'ar' ? 'مقاطعة والبدء بالكلام' : 'Interrupt & speak')
+                : (responseLanguage === 'ar' ? 'ابدأ الكلام' : 'Start speaking')
+            }
+          >
+            {isRecording ? (
+              <Square className="w-6 h-6 text-red-400 fill-red-400" />
+            ) : isSpeaking ? (
+              <div className="relative">
+                <Mic className="w-6 h-6 text-emerald-400" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+              </div>
+            ) : (
+              <Mic className="w-6 h-6 text-emerald-400" />
+            )}
+          </button>
+
+          {/* Quick text input (when toggled) */}
+          <button
+            onClick={() => {
+              if (textInput.trim()) {
+                sendUserMessage(textInput);
+                setTextInput('');
+              } else {
+                setShowTextInput(!showTextInput);
+              }
+            }}
+            disabled={isLoading && !showTextInput}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+              textInput.trim()
+                ? 'bg-emerald-500/20 border border-emerald-500/30'
+                : 'bg-white/5 border border-white/10 hover:bg-white/10'
+            }`}
+            title={responseLanguage === 'ar' ? 'إرسال' : 'Send'}
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <Send className="w-4 h-4 text-emerald-400" />
+              <Send className={`w-4 h-4 ${textInput.trim() ? 'text-emerald-400' : 'text-gray-400'}`} />
             )}
           </button>
-        </form>
+        </div>
+
+        {/* Text input row (expandable) */}
+        <AnimatePresence>
+          {showTextInput && (
+            <motion.form
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onSubmit={handleTextSubmit}
+              className="overflow-hidden mt-2"
+            >
+              <div className="flex gap-2 items-center">
+                <input
+                  ref={textInputRef}
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder={
+                    responseLanguage === 'ar'
+                      ? 'اكتب رسالتك...'
+                      : responseLanguage === 'en'
+                      ? 'Type your message...'
+                      : 'メッセージを入力...'
+                  }
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all text-sm"
+                  disabled={isLoading}
+                  dir="auto"
+                />
+                <button
+                  type="submit"
+                  disabled={!textInput.trim() || isLoading}
+                  className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex-shrink-0"
+                >
+                  <Send className="w-4 h-4 text-emerald-400" />
+                </button>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
+
+        {/* Hint text */}
+        {!isRecording && !isSpeaking && !isLoading && (
+          <p className="text-[10px] text-gray-600 text-center mt-1">
+            {responseLanguage === 'ar'
+              ? 'اضغط على المايكروفون للتكلم • اضغط مجدداً للإيقاف'
+              : responseLanguage === 'en'
+              ? 'Tap mic to speak • Tap again to stop'
+              : 'マイクをタップして話す • もう一度タップして停止'}
+          </p>
+        )}
+        {isSpeaking && !isRecording && (
+          <p className="text-[10px] text-emerald-600 text-center mt-1">
+            {responseLanguage === 'ar'
+              ? 'اضغط على المايكروفون لمقاطعة أليشيا'
+              : responseLanguage === 'en'
+              ? 'Tap mic to interrupt Alisha'
+              : 'マイクをタップしてアリシャを中断'}
+          </p>
+        )}
       </div>
 
       <SettingsDialog
