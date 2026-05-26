@@ -58,6 +58,7 @@ server.log
 *.aab
 *.keystore
 *.jks
+android/keystore.properties
 
 # JDK
 /home/z/jdk/

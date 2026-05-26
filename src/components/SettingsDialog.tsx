@@ -438,11 +438,25 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   };
 
   // Switch to manual key
-  const handleSwitchToManualKey = (provider: ApiProvider, key: string) => {
-    setActiveProvider(provider);
-    setIsUsingFreeKey(false);
-    clearMessages();
-    setShowKeySection(false);
+  const handleSwitchToManualKey = async (provider: ApiProvider, key: string) => {
+    setSwitchingKeyId(`manual-${provider}`);
+    try {
+      setActiveProvider(provider);
+      setIsUsingFreeKey(false);
+      clearMessages();
+      // Fetch models for this provider/key
+      const data = await listModels(provider, key);
+      setModels(data.models);
+      if (data.models.length > 0) {
+        setSelectedModel(data.models[0]);
+      }
+      setShowKeySection(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'فشل في جلب الموديلات';
+      setAddKeyError(msg);
+    } finally {
+      setSwitchingKeyId(null);
+    }
   };
 
   // Verify current key+model

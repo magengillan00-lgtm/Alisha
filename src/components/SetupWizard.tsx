@@ -62,10 +62,13 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
     if (provider) {
       try {
         const data = await listModels(provider, key);
-        setApiKeys([{ provider, key }]);
+        useAppStore.getState().addApiKey({ provider, key });
         setActiveProvider(provider);
         setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
+        if (data.models.length > 0) {
+          useAppStore.getState().setSelectedModel(data.models[0]);
+        }
         setAppState('selectModel');
         setIsVerifying(false);
         return;
@@ -77,10 +80,13 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
         for (const tryProvider of otherProviders) {
           try {
             const data = await listModels(tryProvider, key);
-            setApiKeys([{ provider: tryProvider, key }]);
+            useAppStore.getState().addApiKey({ provider: tryProvider, key });
             setActiveProvider(tryProvider);
             setIsUsingFreeKey(false);
             useAppStore.getState().setModels(data.models);
+            if (data.models.length > 0) {
+              useAppStore.getState().setSelectedModel(data.models[0]);
+            }
             setAppState('selectModel');
             found = true;
             break;

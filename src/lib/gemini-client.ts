@@ -488,24 +488,11 @@ export async function listModels(provider: ApiProvider, apiKey: string): Promise
   const p = PROVIDERS[provider];
   let models = await p.listModels(apiKey);
 
-  // Verify each model works
-  const verifiedModels: string[] = [];
-  const batchSize = 5;
-  for (let i = 0; i < models.length; i += batchSize) {
-    const batch = models.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map((m) => p.testModel(apiKey, m)));
-    for (let j = 0; j < results.length; j++) {
-      if (results[j].status === 'fulfilled' && results[j].value) {
-        verifiedModels.push(batch[j]);
-      }
-    }
-  }
-
-  if (verifiedModels.length === 0) {
+  if (models.length === 0) {
     throw new Error(`لا توجد موديلات متاحة لمفتاح ${p.name}. تأكد من صحة المفتاح.`);
   }
 
-  return { models: verifiedModels };
+  return { models };
 }
 
 export async function sendMessage(
