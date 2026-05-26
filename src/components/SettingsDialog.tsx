@@ -251,12 +251,19 @@ function MemoryEditor({
 
 // ============ MAIN SETTINGS DIALOG ============
 
+import { Mic } from 'lucide-react';
+
+type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
+
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
+  onMicPress: () => void;
+  isRecording: boolean;
+  avatarState: AvatarState;
 }
 
-export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose, onMicPress, isRecording, avatarState }: SettingsDialogProps) {
   const {
     selectedModel,
     responseLanguage,
@@ -944,22 +951,61 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </p>
               </SettingSection>
 
-              {/* ===== Voice (read-only indicator, voice is always on) ===== */}
-              <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-500/20 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-500/20 flex items-center justify-center text-lg">
-                    🔊
+              {/* ===== Voice Input (Mic) & Voice Output (Always On) ===== */}
+              <div className="space-y-2">
+                {/* Voice Output - Always On Indicator */}
+                <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-500/20 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500/20 flex items-center justify-center text-lg">
+                      🔊
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-white font-medium">
+                        {tempLanguage === 'ar' ? 'صوت دائم' : tempLanguage === 'en' ? 'Always Voice' : '常に音声'}
+                      </p>
+                      <p className="text-[10px] text-emerald-400">
+                        جميع الردود صوتية - الأفاتار يتحدث دائماً
+                      </p>
+                    </div>
+                    <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-white font-medium">
-                      {tempLanguage === 'ar' ? 'صوت دائم' : tempLanguage === 'en' ? 'Always Voice' : '常に音声'}
-                    </p>
-                    <p className="text-[10px] text-emerald-400">
-                      جميع الردود صوتية - الأفاتار يتحدث دائماً
-                    </p>
-                  </div>
-                  <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
+
+                {/* Microphone Input Button - moved here from main screen */}
+                <button
+                  onClick={onMicPress}
+                  disabled={avatarState === 'thinking'}
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 border transition-all ${
+                    isRecording
+                      ? 'bg-rose-500/20 border-rose-500/30'
+                      : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]'
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    isRecording
+                      ? 'bg-rose-500/30 animate-pulse'
+                      : 'bg-white/10'
+                  }`}>
+                    <Mic className={`w-4 h-4 ${isRecording ? 'text-rose-300' : 'text-gray-400'}`} />
+                  </div>
+                  <div className="flex-1 text-right">
+                    <p className={`text-sm font-medium ${isRecording ? 'text-rose-300' : 'text-white'}`}>
+                      {isRecording
+                        ? (tempLanguage === 'ar' ? 'جاري التسجيل...' : tempLanguage === 'en' ? 'Recording...' : '録音中...')
+                        : (tempLanguage === 'ar' ? 'إدخال صوتي' : tempLanguage === 'en' ? 'Voice Input' : '音声入力')
+                      }
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {isRecording
+                        ? (tempLanguage === 'ar' ? 'اضغط للإيقاف' : 'Tap to stop')
+                        : (tempLanguage === 'ar' ? 'اضغط للتحدث مع الأفاتار' : 'Tap to speak to Alisha')
+                      }
+                    </p>
+                  </div>
+                  {isRecording && (
+                    <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                  )}
+                </button>
               </div>
 
               {/* ===== Backgrounds ===== */}

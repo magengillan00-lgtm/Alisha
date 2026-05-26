@@ -73,6 +73,7 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   const [loadError, setLoadError] = useState<string | null>(null);
   const animFrameRef = useRef<number>(0);
   const avatarStateRef = useRef(avatarState);
+  const initAttemptedRef = useRef(false);
 
   // Keep avatarState in a ref so the animation loop always uses latest value
   useEffect(() => {
@@ -80,21 +81,26 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   }, [avatarState]);
 
   const initLive2D = useCallback(async () => {
+    if (initAttemptedRef.current) return;
+    initAttemptedRef.current = true;
+
     try {
-      const maxWait = 15000;
+      const maxWait = 30000; // Increased to 30s for slower connections
       const startTime = Date.now();
 
+      // Wait for all required SDK scripts to load
       while (startTime + maxWait > Date.now()) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any;
         if (w.PIXI && w.PIXI.live2d && w.Live2DCubismCore) break;
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 300));
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
       if (!w.PIXI || !w.PIXI.live2d || !w.Live2DCubismCore) {
-        setLoadError('Live2D SDK not loaded');
+        console.error('Live2D SDK not loaded after waiting. PIXI:', !!w.PIXI, 'live2d:', !!w.PIXI?.live2d, 'CubismCore:', !!w.Live2DCubismCore);
+        setLoadError('فشل تحميل Live2D SDK. تحقق من اتصالك بالإنترنت.');
         return;
       }
 
@@ -139,9 +145,11 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
 
       setIsLoaded(true);
       setLoadError(null);
+      console.log('Live2D: Avatar loaded successfully');
     } catch (err) {
       console.error('Live2D init error:', err);
-      setLoadError('Failed to load Live2D model');
+      setLoadError('فشل تحميل الأفاتار. حاول إعادة تحميل الصفحة.');
+      initAttemptedRef.current = false; // Allow retry
     }
   }, [modelPath]);
 
@@ -170,17 +178,27 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       {!isLoaded && !loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           <div className="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">جاري تحميل الأفاتار...</p>
+          <p className="text-sm text-gray-400">جاري تحميل الأفاتار...</p>
         </div>
       )}
       {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-destructive/20 flex items-center justify-center">
-            <svg className="w-6 h-6 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <p className="text-sm text-destructive">{loadError}</p>
+          <p className="text-sm text-red-400 text-center px-4">{loadError}</p>
+          <button
+            onClick={() => {
+              setLoadError(null);
+              initAttemptedRef.current = false;
+              initLive2D();
+            }}
+            className="text-xs text-emerald-400 hover:text-emerald-300 underline"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       )}
     </div>

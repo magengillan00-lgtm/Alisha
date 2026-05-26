@@ -153,11 +153,12 @@ html {
   --sal: env(safe-area-inset-left);
 }
 
-/* NOTE: Do NOT add safe-area padding to body.
-   Each component handles its own safe-area insets to avoid double-padding. */
-
 /* Prevent overscroll bounce on mobile */
 html, body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
 }

@@ -19,7 +19,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
@@ -43,7 +42,7 @@ export default function RootLayout({
         {children}
         <Toaster />
 
-        {/* Load Live2D SDK from CDN */}
+        {/* Load Live2D SDK - order matters: pixi.js first, then CubismCore, then pixi-live2d-display */}
         <Script
           src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.10/browser/pixi.min.js"
           strategy="beforeInteractive"

@@ -7,7 +7,6 @@ import {
   MessageSquare,
   AlertTriangle,
   X,
-  Mic,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
@@ -50,12 +49,13 @@ export default function ChatView() {
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // Mic recording state - used by SettingsDialog, not shown on main screen
+  const [isRecording, setIsRecording] = useState(false);
 
   const recognitionRef = useRef<unknown>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +139,7 @@ export default function ChatView() {
     return prompt;
   }, [responseLanguage, permanentMemory]);
 
-  // --- Speech Recognition ---
+  // --- Speech Recognition (used by SettingsDialog mic) ---
   const startRecording = useCallback(() => {
     const lang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
 
@@ -153,11 +153,11 @@ export default function ChatView() {
           setInterimText(transcript);
         }
       },
-      (error) => {
-        console.error('Recognition error:', error);
+      (err) => {
+        console.error('Recognition error:', err);
         setIsRecording(false);
         setAvatarState('idle');
-        if (error === 'not-allowed') {
+        if (err === 'not-allowed') {
           setError('يرجى السماح بالوصول إلى الميكروفون');
         }
       },
@@ -193,6 +193,17 @@ export default function ChatView() {
     setIsRecording(false);
     setAvatarState('idle');
   }, [setAvatarState]);
+
+  const handleMicPress = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      cancelSpeech();
+      setIsSpeaking(false);
+      setAvatarState('idle');
+      startRecording();
+    }
+  }, [isRecording, stopRecording, startRecording, setAvatarState]);
 
   // --- Send Message to AI ---
   const sendUserMessage = useCallback(
@@ -331,19 +342,8 @@ export default function ChatView() {
     [textInput, sendUserMessage]
   );
 
-  const handleMicPress = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      cancelSpeech();
-      setIsSpeaking(false);
-      setAvatarState('idle');
-      startRecording();
-    }
-  }, [isRecording, stopRecording, startRecording, setAvatarState]);
-
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="h-[100dvh] flex flex-col overflow-hidden">
       {/* Background */}
       {selectedBackground ? (
         <div className="fixed inset-0 z-0">
@@ -361,7 +361,7 @@ export default function ChatView() {
         </div>
       )}
 
-      {/* Top bar - compact, respects safe area */}
+      {/* Top bar - compact */}
       <header className="relative z-10 flex items-center justify-between px-3 py-2 bg-black/30 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
@@ -460,7 +460,7 @@ export default function ChatView() {
         )}
       </div>
 
-      {/* Bottom input area - always visible, respects safe area bottom */}
+      {/* Bottom input area - text input + send button only, NO mic button */}
       <div
         className="relative z-10 bg-gray-950/95 backdrop-blur-sm border-t border-white/10 px-3 py-2 flex-shrink-0"
         style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
@@ -482,35 +482,16 @@ export default function ChatView() {
             disabled={isLoading}
           />
 
-          {/* Mic button - always visible for voice input */}
-          <button
-            type="button"
-            onClick={handleMicPress}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
-              isRecording
-                ? 'bg-gradient-to-br from-rose-500 to-red-600 border border-rose-300/50 shadow-lg shadow-rose-500/30 animate-pulse'
-                : avatarState === 'thinking'
-                ? 'bg-amber-500/20 border border-amber-500/30 cursor-wait'
-                : 'bg-white/5 border border-white/10 hover:bg-white/10'
-            }`}
-            disabled={isLoading}
-            title={isRecording ? 'إيقاف التسجيل' : 'تسجيل صوتي'}
-          >
-            {isLoading ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : isRecording ? (
-              <div className="w-3.5 h-3.5 bg-white rounded-sm" />
-            ) : (
-              <Mic className="w-4 h-4 text-gray-400" />
-            )}
-          </button>
-
           <button
             type="submit"
             disabled={!textInput.trim() || isLoading}
             className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex-shrink-0"
           >
-            <Send className="w-4 h-4 text-emerald-400" />
+            {isLoading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 text-emerald-400" />
+            )}
           </button>
         </form>
       </div>
@@ -518,6 +499,9 @@ export default function ChatView() {
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onMicPress={handleMicPress}
+        isRecording={isRecording}
+        avatarState={avatarState}
       />
     </div>
   );
