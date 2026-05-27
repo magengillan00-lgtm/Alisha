@@ -37,6 +37,33 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <head>
+        {/* Pre-register AssemblyAI PCM16 AudioWorklet */}
+        <Script
+          id="register-audio-worklet"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && window.AudioContext) {
+                window.addEventListener('DOMContentLoaded', function() {
+                  try {
+                    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    ctx.audioWorklet.addModule('/pcm16-processor.js').then(function() {
+                      console.log('PCM16 AudioWorklet registered successfully');
+                      ctx.close();
+                    }).catch(function(e) {
+                      console.warn('PCM16 AudioWorklet registration failed:', e);
+                      ctx.close();
+                    });
+                  } catch(e) {
+                    // AudioWorklet not supported, that's fine
+                  }
+                });
+              }
+            `,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

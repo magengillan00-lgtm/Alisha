@@ -19,7 +19,10 @@ export interface MemoryItem {
 }
 
 // Supported API providers
-export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'together' | 'openrouter' | 'cohere' | 'mistral';
+export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'together' | 'openrouter' | 'cohere' | 'mistral' | 'abliteration';
+
+// Supported STT providers
+export type SttProvider = 'assemblyai' | 'webspeech';
 
 export interface ApiKeyEntry {
   provider: ApiProvider;
@@ -115,6 +118,10 @@ interface AppStore {
   // Loading
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+
+  // STT Provider
+  sttProvider: SttProvider;
+  setSttProvider: (provider: SttProvider) => void;
 
   // Error
   error: string | null;
@@ -227,6 +234,9 @@ export const useAppStore = create<AppStore>()(
       isLoading: false,
       setIsLoading: (isLoading) => set({ isLoading }),
 
+      sttProvider: 'assemblyai',
+      setSttProvider: (sttProvider) => set({ sttProvider }),
+
       error: null,
       setError: (error) => set({ error }),
 
@@ -247,6 +257,7 @@ export const useAppStore = create<AppStore>()(
         freeKeys: state.freeKeys,
         exhaustedKeyIds: state.exhaustedKeyIds,
         models: state.models,
+        sttProvider: state.sttProvider,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

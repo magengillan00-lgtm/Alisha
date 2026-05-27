@@ -24,10 +24,14 @@ import {
   EyeOff,
   RefreshCw,
   Zap,
+  Mic,
+  Shield,
 } from 'lucide-react';
-import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type FreeKey } from '@/store/useAppStore';
+import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type FreeKey, type SttProvider } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
 import { fetchFreeKeys, fetchFreeKeyModels, verifyKeyModel, verifyManualKeyModel, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
+import { hasServerKey, getDefaultModels } from '@/lib/llm-providers';
+import { STT_PROVIDERS } from '@/lib/stt-providers';
 
 // ============ BACKGROUNDS DATA ============
 
@@ -282,6 +286,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setSelectedFreeKey,
     setModels,
     exhaustedKeyIds,
+    sttProvider,
+    setSttProvider,
   } = useAppStore();
 
   // Key section state
@@ -705,7 +711,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     </div>
                     <div className="flex-1 text-right">
                       <p className="text-xs text-white font-medium">إدخال مفتاح API يدوياً</p>
-                      <p className="text-[10px] text-gray-500">Gemini, Groq, HuggingFace, وغيرها</p>
+                      <p className="text-[10px] text-gray-500">Gemini, Groq, Abliteration, وغيرها</p>
                     </div>
                     <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${showManualKeyForm ? 'rotate-90' : ''}`} />
                   </button>
@@ -1040,6 +1046,58 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     مسح المحادثة والبدء من جديد
                   </button>
                 )}
+              </SettingSection>
+
+              {/* ===== Server Default Keys ===== */}
+              <SettingSection icon={<Shield className="w-4 h-4" />} label="مفاتيح افتراضية متاحة" defaultOpen={false}>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-gray-500 mb-2">
+                    هذه المفاتيح متاحة تلقائياً على الخادم - لا حاجة لإدخالها يدوياً
+                  </p>
+                  {PROVIDER_INFO.filter((p) => hasServerKey(p.id)).map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/[0.06]"
+                    >
+                      <span className="text-base">{p.icon}</span>
+                      <span className="flex-1 text-right text-xs text-gray-300">{p.name}</span>
+                      <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        متاح
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-gray-600 mt-1">
+                    💡 يمكنك أيضاً إدخال مفتاحك الخاص لتجاوز المفتاح الافتراضي
+                  </p>
+                </div>
+              </SettingSection>
+
+              {/* ===== STT Provider ===== */}
+              <SettingSection icon={<Mic className="w-4 h-4" />} label="محرك التعرف على الصوت" defaultOpen={false}>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-gray-500 mb-2">
+                    اختر محرك تحويل الصوت إلى نص
+                  </p>
+                  {STT_PROVIDERS.map((provider) => (
+                    <button
+                      key={provider.id}
+                      onClick={() => setSttProvider(provider.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-xs ${
+                        sttProvider === provider.id
+                          ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                          : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className="text-base">{provider.icon}</span>
+                      <div className="flex-1 text-right">
+                        <p className="font-medium">{provider.nameAr}</p>
+                        <p className="text-[10px] text-gray-500">{provider.description}</p>
+                      </div>
+                      {sttProvider === provider.id && <Check className="w-3 h-3 text-emerald-400" />}
+                    </button>
+                  ))}
+                </div>
               </SettingSection>
 
               {/* ===== Logout ===== */}

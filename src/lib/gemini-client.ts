@@ -420,6 +420,46 @@ const mistralProvider: ProviderConfig = {
   },
 };
 
+// ============ ABLITERATION AI PROVIDER ============
+
+const abliterationProvider: ProviderConfig = {
+  name: 'Abliteration AI',
+  baseUrl: 'https://api.abliteration.ai/v1',
+  listEndpoint: 'https://api.abliteration.ai/v1/models',
+  chatEndpoint: () => 'https://api.abliteration.ai/v1/chat/completions',
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetch('https://api.abliteration.ai/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Abliteration AI API غير صالح.');
+    const data = await res.json();
+    return (data.data || []).map((m: { id: string }) => m.id);
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetch('https://api.abliteration.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Abliteration AI');
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetch('https://api.abliteration.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
 // ============ PROVIDER REGISTRY ============
 
 export const PROVIDERS: Record<ApiProvider, ProviderConfig> = {
@@ -431,6 +471,7 @@ export const PROVIDERS: Record<ApiProvider, ProviderConfig> = {
   openrouter: openrouterProvider,
   cohere: cohereProvider,
   mistral: mistralProvider,
+  abliteration: abliterationProvider,
 };
 
 export const PROVIDER_INFO: { id: ApiProvider; name: string; nameAr: string; icon: string; color: string; keyPlaceholder: string }[] = [
@@ -442,6 +483,7 @@ export const PROVIDER_INFO: { id: ApiProvider; name: string; nameAr: string; ico
   { id: 'openrouter', name: 'OpenRouter', nameAr: 'أوبن راوتر', icon: '🌐', color: 'from-indigo-500 to-violet-500', keyPlaceholder: 'sk-or-...' },
   { id: 'cohere', name: 'Cohere', nameAr: 'كوهير', icon: '🔮', color: 'from-teal-500 to-cyan-500', keyPlaceholder: 'Bearer ...' },
   { id: 'mistral', name: 'Mistral AI', nameAr: 'ميسترال', icon: '🌪️', color: 'from-sky-500 to-blue-600', keyPlaceholder: 'Bearer ...' },
+  { id: 'abliteration', name: 'Abliteration AI', nameAr: 'أبليتريشن', icon: '🔥', color: 'from-rose-500 to-red-600', keyPlaceholder: 'ak_...' },
 ];
 
 // ============ PUBLIC API FUNCTIONS ============
