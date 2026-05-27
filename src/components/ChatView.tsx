@@ -114,7 +114,7 @@ export default function ChatView() {
   useEffect(() => {
     if (sttProvider === 'assemblyai') {
       const stt = new AssemblyAISTREAMING_STT({
-        tokenEndpoint: '/api/aai-token',
+        apiKey: 'd89c20e81ef94c04b1f633317c88c7c5',
       });
       stt.setCallbacks(
         (result) => {

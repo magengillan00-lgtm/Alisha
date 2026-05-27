@@ -2,10 +2,13 @@
  * AssemblyAI Streaming STT Service
  * Uses WebSocket v3 with u3-rt-pro model for real-time speech-to-text
  * Supports Arabic and English language detection
+ * 
+ * NOTE: This uses the API key directly from the client for temporary testing.
+ * In production, use a server-side API route to mint temporary tokens.
  */
 
 export interface AssemblyAIConfig {
-  tokenEndpoint: string;
+  apiKey: string;
   sampleRate?: number;
   speechModel?: string;
   languagePrompt?: string;
@@ -60,6 +63,30 @@ export class AssemblyAISTREAMING_STT {
     this.onStatus?.(status);
   }
 
+  /**
+   * Mint a temporary token from AssemblyAI.
+   * For production, this should be done server-side.
+   */
+  private async mintToken(): Promise<string> {
+    const response = await fetch(
+      'https://streaming.assemblyai.com/v3/token?expires_in_seconds=480',
+      {
+        headers: { authorization: this.config.apiKey },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to mint AssemblyAI token: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.token) {
+      throw new Error('No token received from AssemblyAI');
+    }
+
+    return data.token;
+  }
+
   async start(): Promise<void> {
     if (this.isActive) {
       console.warn('[AssemblyAI] Already active');
@@ -69,16 +96,8 @@ export class AssemblyAISTREAMING_STT {
     try {
       this.updateStatus('connecting');
 
-      // 1. Get temporary token from server
-      const tokenResponse = await fetch(this.config.tokenEndpoint);
-      if (!tokenResponse.ok) {
-        throw new Error(`Failed to get AssemblyAI token: ${tokenResponse.status}`);
-      }
-      const { token } = await tokenResponse.json();
-
-      if (!token) {
-        throw new Error('No token received from server');
-      }
+      // 1. Mint temporary token
+      const token = await this.mintToken();
 
       // 2. Request microphone access
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -118,7 +137,6 @@ export class AssemblyAISTREAMING_STT {
         this.reconnectAttempts = 0;
         this.updateStatus('connected');
 
-        // Connect audio pipeline
         this.sourceNode?.connect(this.workletNode!);
         this.workletNode?.connect(this.audioContext!.destination);
 
@@ -185,10 +203,7 @@ export class AssemblyAISTREAMING_STT {
         break;
 
       case 'Termination':
-        console.log('[AssemblyAI] Session terminated:', {
-          audioDuration: msg.audio_duration_seconds,
-          sessionDuration: msg.session_duration_seconds,
-        });
+        console.log('[AssemblyAI] Session terminated');
         this.isActive = false;
         this.updateStatus('disconnected');
         break;
