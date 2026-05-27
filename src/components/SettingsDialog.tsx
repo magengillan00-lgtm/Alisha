@@ -30,7 +30,7 @@ import {
 import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type FreeKey, type SttProvider } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
 import { fetchFreeKeys, fetchFreeKeyModels, verifyKeyModel, verifyManualKeyModel, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
-import { hasServerKey, getDefaultModels } from '@/lib/llm-providers';
+import { hasServerKey } from '@/lib/llm-providers';
 import { STT_PROVIDERS } from '@/lib/stt-providers';
 
 // ============ BACKGROUNDS DATA ============

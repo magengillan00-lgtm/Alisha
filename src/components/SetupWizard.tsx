@@ -13,6 +13,7 @@ function detectProvider(key: string): ApiProvider | null {
   if (k.startsWith('hf_')) return 'huggingface';
   if (k.startsWith('nvapi-')) return 'nvidia';
   if (k.startsWith('gsk_')) return 'groq';
+  if (k.startsWith('ak_')) return 'abliteration';
   if (k.includes('together.ai') || k.startsWith('Bearer ') && k.includes('together')) return 'together';
   if (k.startsWith('sk-or-')) return 'openrouter';
   if (k.startsWith('Bearer') && k.length > 20) {
@@ -107,7 +108,7 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
     }
 
     setError(null);
-    const tryOrder: ApiProvider[] = ['gemini', 'huggingface', 'nvidia', 'groq', 'together', 'openrouter', 'cohere', 'mistral'];
+    const tryOrder: ApiProvider[] = ['gemini', 'huggingface', 'nvidia', 'groq', 'together', 'openrouter', 'cohere', 'mistral', 'abliteration'];
     let found = false;
 
     for (const tryProvider of tryOrder) {

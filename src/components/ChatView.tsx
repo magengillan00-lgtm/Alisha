@@ -11,9 +11,11 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
+import { speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
 import { sendMessage } from '@/lib/gemini-client';
 import { sendFreeKeyMessage } from '@/lib/free-keys';
+import { createSTTSession, type STTSession } from '@/lib/stt-providers';
+import { hasServerKey } from '@/lib/llm-providers';
 import SettingsDialog from '@/components/SettingsDialog';
 
 const Live2DViewer = dynamic(() => import('@/components/Live2DViewer'), {
@@ -47,6 +49,7 @@ export default function ChatView() {
     markKeyExhausted,
     switchToNextAvailableKey,
     setSelectedModel,
+    sttProvider,
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
@@ -57,7 +60,7 @@ export default function ChatView() {
   const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  const recognitionRef = useRef<unknown>(null);
+  const sttSessionRef = useRef<STTSession | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize TTS and voices on mount
@@ -139,56 +142,55 @@ export default function ChatView() {
     return prompt;
   }, [responseLanguage, permanentMemory]);
 
-  // --- Speech Recognition ---
+  // --- Speech Recognition (supports AssemblyAI + Web Speech API) ---
   const startRecording = useCallback(() => {
-    const lang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
+    const lang = responseLanguage;
 
-    const recognition = createSpeechRecognition(
-      lang,
-      (transcript, isFinal) => {
-        if (isFinal) {
-          setInterimText('');
-          sendUserMessage(transcript);
-        } else {
-          setInterimText(transcript);
+    try {
+      const session = createSTTSession(
+        sttProvider,
+        lang,
+        (result) => {
+          if (result.isFinal) {
+            setInterimText('');
+            sendUserMessage(result.text);
+          } else {
+            setInterimText(result.text);
+          }
+        },
+        (error) => {
+          console.error('STT error:', error);
+          setIsRecording(false);
+          setAvatarState('idle');
+          if (error.includes('not-allowed') || error.includes('permission') || error === 'الميكروفون') {
+            setError('يرجى السماح بالوصول إلى الميكروفون');
+          } else {
+            setError('حدث خطأ في التعرف على الصوت: ' + error);
+          }
+        },
+        () => {
+          setIsRecording(false);
+          setAvatarState('idle');
         }
-      },
-      (error) => {
-        console.error('Recognition error:', error);
-        setIsRecording(false);
-        setAvatarState('idle');
-        if (error === 'not-allowed') {
-          setError('يرجى السماح بالوصول إلى الميكروفون');
-        }
-      },
-      () => {
-        setIsRecording(false);
-        setAvatarState('idle');
-      }
-    );
+      );
 
-    if (!recognition) {
-      setError('المتصفح لا يدعم التعرف على الصوت. استخدم الإدخال النصي بدلاً من ذلك.');
-      return;
+      sttSessionRef.current = session;
+      unlockAudio();
+      warmupSpeech();
+      session.start();
+      setIsRecording(true);
+      setAvatarState('listening');
+      setInterimText('');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'فشل في بدء التعرف على الصوت';
+      setError(msg);
     }
-
-    recognitionRef.current = recognition;
-    unlockAudio();
-    warmupSpeech();
-    recognition.start();
-    setIsRecording(true);
-    setAvatarState('listening');
-    setInterimText('');
-  }, [responseLanguage, setError, setAvatarState]);
+  }, [responseLanguage, sttProvider, setError, setAvatarState]);
 
   const stopRecording = useCallback(() => {
-    const recognition = recognitionRef.current as { stop: () => void; abort: () => void } | null;
-    if (recognition) {
-      try {
-        recognition.stop();
-      } catch (_e) {
-        recognition.abort();
-      }
+    if (sttSessionRef.current) {
+      sttSessionRef.current.stop();
+      sttSessionRef.current = null;
     }
     setIsRecording(false);
     setAvatarState('idle');
@@ -219,8 +221,10 @@ export default function ChatView() {
       setIsSpeaking(false);
 
       try {
+        // Keep last 20 messages to avoid token limits
+        const recentMessages = messages.slice(-20);
         const chatMessages = [
-          ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+          ...recentMessages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
           { role: 'user' as const, content: text.trim() },
         ];
 
@@ -270,20 +274,31 @@ export default function ChatView() {
             throw err;
           }
         } else {
-          // Use manual API key
+          // Use server-side API proxy (keys are kept secure on server)
           const activeKey = getActiveApiKey();
-          if (!activeKey) {
+          const serverHasKey = hasServerKey(activeProvider);
+          
+          if (!activeKey && !serverHasKey) {
             throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
           }
-          const data = await sendMessage(
-            activeProvider,
-            activeKey,
-            selectedModel,
-            chatMessages,
-            responseLanguage,
-            permanentMemory
-          );
-          responseText = data.text;
+          
+          // Route through server proxy for security
+          const systemPrompt = buildSystemPrompt();
+          const chatRes = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: activeProvider,
+              model: selectedModel,
+              messages: chatMessages,
+              systemPrompt,
+              apiKey: activeKey || undefined, // undefined = use server default key
+            }),
+          });
+          
+          const chatData = await chatRes.json();
+          if (chatData.error) throw new Error(chatData.error);
+          responseText = chatData.text;
         }
 
         const assistantMsg = {

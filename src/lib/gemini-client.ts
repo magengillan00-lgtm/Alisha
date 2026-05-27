@@ -333,11 +333,11 @@ const openrouterProvider: ProviderConfig = {
 
 const cohereProvider: ProviderConfig = {
   name: 'Cohere',
-  baseUrl: 'https://api.cohere.ai/v1',
-  listEndpoint: 'https://api.cohere.ai/v1/models',
-  chatEndpoint: () => 'https://api.cohere.ai/v1/chat',
+  baseUrl: 'https://api.cohere.com/v1',
+  listEndpoint: 'https://api.cohere.com/v1/models',
+  chatEndpoint: () => 'https://api.cohere.com/v1/chat',
   listModels: async (apiKey: string): Promise<string[]> => {
-    const res = await fetch('https://api.cohere.ai/v1/models', {
+    const res = await fetch('https://api.cohere.com/v1/models', {
       headers: { 'Authorization': `Bearer ${apiKey}` },
     });
     if (!res.ok) throw new Error('مفتاح Cohere API غير صالح.');
@@ -348,11 +348,11 @@ const cohereProvider: ProviderConfig = {
     const chatHistory = [];
     let lastMessage = '';
     for (const m of messages) {
+      if (m.role === 'system') continue; // system prompt is in preamble
       if (m.role === 'user') lastMessage = m.content;
       else if (m.role === 'assistant') chatHistory.push({ role: 'CHATBOT', message: m.content });
-      else chatHistory.push({ role: 'USER', message: m.content });
     }
-    const res = await fetch('https://api.cohere.ai/v1/chat', {
+    const res = await fetch('https://api.cohere.com/v1/chat', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -368,7 +368,7 @@ const cohereProvider: ProviderConfig = {
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
-      const res = await fetch('https://api.cohere.ai/v1/chat', {
+      const res = await fetch('https://api.cohere.com/v1/chat', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, message: 'hi', max_tokens: 5 }),
@@ -551,6 +551,3 @@ export async function sendMessage(
   const text = await p.sendMessage(apiKey, model, formattedMessages, systemPrompt);
   return { text };
 }
-
-// Legacy support for backward compatibility
-export { sendMessage as _legacySendMessage };
