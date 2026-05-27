@@ -10,13 +10,30 @@ class TTSService {
   private audio: HTMLAudioElement | null = null;
   private isSpeaking = false;
   private synth: SpeechSynthesis | null = null;
+  private voices: SpeechSynthesisVoice[] = [];
+  private timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
       this.synth = window.speechSynthesis || null;
       this.audio = new Audio();
-      this.audio.onended = () => { this.isSpeaking = false; };
-      this.audio.onerror = () => { this.isSpeaking = false; };
+      this.audio.onended = () => { this.clearTimeout(); this.isSpeaking = false; };
+      this.audio.onerror = () => { this.clearTimeout(); this.isSpeaking = false; };
+
+      // Pre-load voices (they load asynchronously in Chrome)
+      if (this.synth) {
+        this.voices = this.synth.getVoices();
+        this.synth.onvoiceschanged = () => {
+          this.voices = this.synth?.getVoices() || [];
+        };
+      }
+    }
+  }
+
+  private clearTimeout() {
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
     }
   }
 
@@ -43,9 +60,8 @@ class TTSService {
   private async speakWithGoogle(text: string, lang: string): Promise<void> {
     try {
       // Use Google TTS direct audio URL
-      const tld = lang === 'ar' ? 'com' : 'com';
-      const encoded = encodeURIComponent(text);
-      const url = `https://translate.google.${tld}/translate_tts?ie=UTF-8&q=${encoded}&tl=${lang}&client=tw-ob`;
+      const encoded = encodeURIComponent(text.substring(0, 200)); // Limit text length for URL
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${lang}&client=tw-ob`;
 
       if (!this.audio) {
         this.audio = new Audio();
@@ -57,7 +73,11 @@ class TTSService {
       await new Promise<void>((resolve, reject) => {
         if (!this.audio) { resolve(); return; }
 
+        // Clear any existing timeout
+        this.clearTimeout();
+
         this.audio!.oncanplay = () => {
+          this.clearTimeout(); // Clear timeout since audio loaded successfully
           this.audio!.play().then(resolve).catch(reject);
         };
 
@@ -74,8 +94,8 @@ class TTSService {
           resolve();
         };
 
-        // Timeout after 10 seconds
-        setTimeout(() => {
+        // Timeout after 10 seconds - clear timeout if audio starts
+        this.timeoutId = setTimeout(() => {
           this.isSpeaking = false;
           resolve();
         }, 10000);
@@ -100,11 +120,11 @@ class TTSService {
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
 
-    // Try to find an Arabic voice
-    const voices = this.synth.getVoices();
-    const arabicVoice = voices.find(v => v.lang.startsWith('ar'));
-    if (arabicVoice) {
-      utterance.voice = arabicVoice;
+    // Try to find a voice matching the language
+    const targetLang = lang === 'ar' ? 'ar' : lang;
+    const matchingVoice = this.voices.find(v => v.lang.startsWith(targetLang));
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
     }
 
     utterance.onstart = () => { this.isSpeaking = true; };
@@ -115,6 +135,7 @@ class TTSService {
   }
 
   stop(): void {
+    this.clearTimeout();
     if (this.audio) {
       this.audio.pause();
       this.audio.currentTime = 0;

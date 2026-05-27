@@ -5,6 +5,28 @@ import { NextRequest, NextResponse } from 'next/server';
  * Proxies blockchain queries through Alchemy RPC
  */
 
+// Allowlist of safe read-only Ethereum RPC methods
+const ALLOWED_METHODS = new Set([
+  'eth_blockNumber',
+  'eth_getBalance',
+  'eth_call',
+  'eth_getTransactionByHash',
+  'eth_getTransactionReceipt',
+  'eth_getBlockByNumber',
+  'eth_getBlockByHash',
+  'eth_getCode',
+  'eth_getStorageAt',
+  'eth_getLogs',
+  'eth_gasPrice',
+  'eth_estimateGas',
+  'net_version',
+  'web3_clientVersion',
+  'alchemy_getTokenBalances',
+  'alchemy_getTokenMetadata',
+  'alchemy_getNftMetadata',
+  'alchemy_getAssetTransfers',
+]);
+
 interface Web3Request {
   method: string;
   params?: any[];
@@ -15,6 +37,14 @@ export async function POST(request: NextRequest) {
   try {
     const body: Web3Request = await request.json();
     const { method, params = [], customApiKey } = body;
+
+    // Validate method against allowlist
+    if (!ALLOWED_METHODS.has(method)) {
+      return NextResponse.json(
+        { error: `الطريقة '${method}' غير مسموح بها` },
+        { status: 403 }
+      );
+    }
 
     const apiKey = customApiKey || process.env.ALCHEMY_API_KEY;
 
@@ -36,8 +66,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Alchemy API error (${response.status}): ${errorText}`);
+      throw new Error(`Alchemy API error (${response.status})`);
     }
 
     const data = await response.json();
@@ -50,7 +79,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Web3 API error:', error);
     return NextResponse.json(
-      { error: 'فشل في استعلام البلوكتشين', details: error?.message || String(error) },
+      { error: 'فشل في استعلام البلوكتشين' },
       { status: 500 }
     );
   }

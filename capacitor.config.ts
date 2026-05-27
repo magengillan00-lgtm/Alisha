@@ -6,8 +6,6 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     // When running as native app, use the remote server for API calls
-    // The static assets are served from the app bundle
-    // API calls (/api/*) are proxied to the remote server
     url: process.env.CAPACITOR_SERVER_URL || undefined,
     androidScheme: 'https',
   },
@@ -23,7 +21,8 @@ const config: CapacitorConfig = {
     },
   },
   android: {
-    allowMixedContent: true,
+    // Don't allow mixed content for security
+    allowMixedContent: false,
     backgroundColor: '#0f0a1a',
   },
 };

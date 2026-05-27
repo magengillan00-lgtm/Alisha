@@ -9,6 +9,7 @@ export interface AssemblyAIConfig {
   sampleRate?: number;
   speechModel?: string;
   languagePrompt?: string;
+  customApiKey?: string; // Support for user-provided API key
 }
 
 export interface TranscriptionResult {
@@ -70,7 +71,11 @@ export class AssemblyAISTreamingSTT {
       this.updateStatus('connecting');
 
       // 1. Get temporary token from server
-      const tokenResponse = await fetch(this.config.tokenEndpoint);
+      const tokenResponse = await fetch(this.config.tokenEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customApiKey: this.config.customApiKey }),
+      });
       if (!tokenResponse.ok) {
         throw new Error(`Failed to get AssemblyAI token: ${tokenResponse.status}`);
       }
@@ -106,10 +111,9 @@ export class AssemblyAISTreamingSTT {
       };
 
       // 4. Connect WebSocket to AssemblyAI
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=${this.config.sampleRate}&speech_model=${this.config.speechModel}&token=${token}`;
-
+      let wsUrl = `wss://streaming.assemblyai.com/v3/ws?sample_rate=${this.config.sampleRate}&speech_model=${this.config.speechModel}&token=${token}`;
       if (this.config.languagePrompt) {
-        // For U3 Pro Streaming, use prompt query param for language steering
+        wsUrl += `&word_boost=${encodeURIComponent(JSON.stringify(["Arabic", "English", "العربية"]))}&language_detection=true`;
       }
 
       this.ws = new WebSocket(wsUrl);
@@ -151,6 +155,8 @@ export class AssemblyAISTreamingSTT {
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           console.log(`[AssemblyAI] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+          // Clean up old resources before reconnecting to prevent leaks
+          this.cleanup();
           setTimeout(() => this.start(), 2000 * this.reconnectAttempts);
         }
       };

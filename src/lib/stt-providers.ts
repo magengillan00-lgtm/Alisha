@@ -3,6 +3,8 @@
  * Supports: AssemblyAI Streaming (default) + Web Speech API (fallback)
  */
 
+import { AssemblyAISTreamingSTT } from './assemblyai-stt';
+
 export type STTProviderType = 'assemblyai' | 'web-speech';
 
 export interface STTResult {
@@ -21,6 +23,7 @@ export type STTStatusCallback = (status: string) => void;
 export class WebSpeechSTT {
   private recognition: any = null;
   private isActive = false;
+  private shouldBeActive = false; // Track intent for auto-restart
   private onResult: STTResultCallback | null = null;
   private onError: STTErrorCallback | null = null;
   private onStatus: STTStatusCallback | null = null;
@@ -71,6 +74,7 @@ export class WebSpeechSTT {
     this.recognition.onerror = (event: any) => {
       console.error('[WebSpeech] Error:', event.error);
       if (event.error === 'not-allowed') {
+        this.shouldBeActive = false;
         this.onError?.(new Error('تم رفض إذن الميكروفون'));
       } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
         this.onError?.(new Error(`خطأ في التعرف على الكلام: ${event.error}`));
@@ -84,9 +88,21 @@ export class WebSpeechSTT {
 
     this.recognition.onend = () => {
       this.isActive = false;
-      this.onStatus?.('disconnected');
-      // Auto-restart if still supposed to be active (Web Speech API stops automatically)
-      // The caller should handle restarting
+      // Auto-restart if still supposed to be active
+      // Web Speech API stops automatically after silence - we need to restart it
+      if (this.shouldBeActive) {
+        try {
+          this.recognition.start();
+        } catch (e: any) {
+          if (!e.message?.includes('already started')) {
+            console.warn('[WebSpeech] Failed to auto-restart:', e.message);
+            this.shouldBeActive = false;
+            this.onStatus?.('disconnected');
+          }
+        }
+      } else {
+        this.onStatus?.('disconnected');
+      }
     };
   }
 
@@ -102,18 +118,21 @@ export class WebSpeechSTT {
     }
     if (this.isActive) return;
 
+    this.shouldBeActive = true;
     try {
       this.recognition.start();
     } catch (e: any) {
       // If already started, ignore
       if (!e.message?.includes('already started')) {
+        this.shouldBeActive = false;
         throw e;
       }
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.recognition || !this.isActive) return;
+    this.shouldBeActive = false;
+    if (!this.recognition) return;
 
     try {
       this.recognition.stop();
@@ -141,7 +160,8 @@ export class WebSpeechSTT {
 // ==========================================
 export class STTProviderManager {
   private currentProvider: STTProviderType = 'assemblyai';
-  private assemblyaiSTT: any = null;
+  private activeProvider: STTProviderType = 'assemblyai'; // Track what's actually running
+  private assemblyaiSTT: AssemblyAISTreamingSTT | null = null;
   private webSpeechSTT: WebSpeechSTT | null = null;
   private onResult: STTResultCallback | null = null;
   private onError: STTErrorCallback | null = null;
@@ -151,7 +171,7 @@ export class STTProviderManager {
     this.webSpeechSTT = new WebSpeechSTT();
   }
 
-  setAssemblyAI(stt: any) {
+  setAssemblyAI(stt: AssemblyAISTreamingSTT) {
     this.assemblyaiSTT = stt;
   }
 
@@ -185,30 +205,34 @@ export class STTProviderManager {
     return this.currentProvider;
   }
 
+  getActiveProvider(): STTProviderType {
+    return this.activeProvider;
+  }
+
   async start(): Promise<void> {
     if (this.currentProvider === 'assemblyai' && this.assemblyaiSTT) {
       try {
         await this.assemblyaiSTT.start();
+        this.activeProvider = 'assemblyai';
       } catch (error: any) {
         console.warn('[STT] AssemblyAI failed, falling back to Web Speech API:', error.message);
-        this.currentProvider = 'web-speech';
+        this.activeProvider = 'web-speech';
         await this.webSpeechSTT?.start();
       }
     } else {
+      this.activeProvider = 'web-speech';
       await this.webSpeechSTT?.start();
     }
   }
 
   async stop(): Promise<void> {
-    if (this.currentProvider === 'assemblyai' && this.assemblyaiSTT) {
-      await this.assemblyaiSTT.stop();
-    } else {
-      await this.webSpeechSTT?.stop();
-    }
+    // Stop both to handle fallback scenarios cleanly
+    await this.assemblyaiSTT?.stop();
+    await this.webSpeechSTT?.stop();
   }
 
   isRecording(): boolean {
-    if (this.currentProvider === 'assemblyai' && this.assemblyaiSTT) {
+    if (this.activeProvider === 'assemblyai' && this.assemblyaiSTT) {
       return this.assemblyaiSTT.getIsActive();
     }
     return this.webSpeechSTT?.getIsActive() || false;

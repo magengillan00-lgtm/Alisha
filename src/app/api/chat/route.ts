@@ -5,7 +5,7 @@ import ZAI from 'z-ai-web-dev-sdk';
 // Multi-Provider LLM Chat API
 // ==========================================
 
-type LLMProviderId = 'zai' | 'openrouter' | 'google' | 'nvidia' | 'abliteration' | 'huggingface';
+import { LLMProviderId } from '@/lib/llm-providers';
 
 interface ChatRequest {
   message: string;
@@ -24,6 +24,8 @@ function buildMessages(message: string, history: Array<{ role: string; content: 
   }
   if (Array.isArray(history)) {
     for (const msg of history) {
+      // Skip system messages in history - systemPrompt handles that
+      if (msg.role === 'system') continue;
       messages.push({ role: msg.role, content: msg.content });
     }
   }
@@ -85,7 +87,9 @@ async function callOpenAICompatible(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`API error (${response.status}): ${errorText}`);
+    // Log full error server-side only, return generic message to client
+    console.error(`[LLM] API error from ${endpoint}:`, response.status, errorText);
+    throw new Error(`خطأ في مزود الخدمة (${response.status})`);
   }
 
   const data = await response.json();
@@ -104,9 +108,10 @@ async function callGemini(
   // Build Gemini format contents
   const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
-  // Add history
+  // Add history (skip system messages)
   if (Array.isArray(history)) {
     for (const msg of history) {
+      if (msg.role === 'system') continue; // Skip system messages
       contents.push({
         role: msg.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: msg.content }],
@@ -141,7 +146,8 @@ async function callGemini(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+    console.error('[LLM] Gemini API error:', response.status, errorText);
+    throw new Error(`خطأ في Gemini API (${response.status})`);
   }
 
   const data = await response.json();
@@ -189,16 +195,18 @@ async function callHuggingFace(
 
     if (!fallbackResponse.ok) {
       const errorText = await fallbackResponse.text();
-      throw new Error(`HuggingFace API error (${fallbackResponse.status}): ${errorText}`);
+      console.error('[LLM] HuggingFace API error:', fallbackResponse.status, errorText);
+      throw new Error(`خطأ في HuggingFace API (${fallbackResponse.status})`);
     }
 
     const data = await fallbackResponse.json();
     if (Array.isArray(data) && data[0]?.generated_text) {
       const text = data[0].generated_text;
-      const assistantPart = text.split('Assistant:').pop();
-      return assistantPart?.trim() || text.trim();
+      // Use regex to find the last Assistant response
+      const match = text.match(/Assistant:\s*([\s\S]*)$/);
+      return match ? match[1].trim() : text.trim();
     }
-    return typeof data === 'string' ? data : JSON.stringify(data);
+    return typeof data === 'string' ? data : 'عذراً، لم أتمكن من الرد.';
   }
 
   const data = await response.json();
@@ -222,7 +230,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!message) {
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+      return NextResponse.json({ error: 'الرسالة مطلوبة' }, { status: 400 });
     }
 
     const apiKey = getApiKey(provider, customApiKey);
@@ -304,8 +312,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ reply, provider, model: model || 'default' });
   } catch (error: any) {
     console.error('Chat API error:', error);
+    // Return user-friendly error without leaking internal details
+    const userMessage = error?.message?.includes('غير') ? error.message : 'فشل في الحصول على الرد';
     return NextResponse.json(
-      { error: 'فشل في الحصول على الرد', details: error?.message || String(error) },
+      { error: userMessage },
       { status: 500 }
     );
   }

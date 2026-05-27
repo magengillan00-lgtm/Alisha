@@ -157,15 +157,19 @@ export function saveCustomAPIKeys(keys: CustomAPIKeys): void {
 }
 
 export function getAPIKeyForProvider(provider: LLMProviderId, customKeys: CustomAPIKeys): string | undefined {
-  const envKeyMap: Record<LLMProviderId, keyof CustomAPIKeys> = {
-    zai: 'assemblyai', // ZAI doesn't use custom keys
+  // ZAI doesn't use custom API keys - it uses the SDK internally
+  if (provider === 'zai') return undefined;
+
+  const envKeyMap: Record<LLMProviderId, keyof CustomAPIKeys | undefined> = {
+    zai: undefined,
     openrouter: 'openrouter',
     google: 'google',
     nvidia: 'nvidia',
     abliteration: 'abliteration',
     huggingface: 'huggingface',
   };
-  return customKeys[envKeyMap[provider]];
+  const key = envKeyMap[provider];
+  return key ? customKeys[key] : undefined;
 }
 
 // Alchemy/Web3 provider (separate from LLM)

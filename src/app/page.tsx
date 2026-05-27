@@ -115,6 +115,7 @@ export default function AlishaChat() {
   useEffect(() => {
     const assemblyaiSTT = new AssemblyAISTreamingSTT({
       tokenEndpoint: `${getApiBase()}/api/aai-token`,
+      customApiKey: customKeys.assemblyai || undefined,
     });
 
     const manager = new STTProviderManager();
@@ -171,10 +172,10 @@ export default function AlishaChat() {
 
   // Send message to LLM
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || isThinking) return; // Guard against concurrent calls
 
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
       content: text,
       timestamp: new Date(),
@@ -185,6 +186,10 @@ export default function AlishaChat() {
     setIsThinking(true);
 
     chatHistoryRef.current.push({ role: 'user', content: text });
+    // Keep history bounded to prevent memory issues
+    if (chatHistoryRef.current.length > 50) {
+      chatHistoryRef.current = chatHistoryRef.current.slice(-30);
+    }
 
     try {
       const apiBase = getApiBase();
@@ -209,7 +214,7 @@ export default function AlishaChat() {
       const reply = data.reply || 'عذراً، لم أتمكن من الرد.';
 
       const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: reply,
         timestamp: new Date(),
@@ -221,11 +226,13 @@ export default function AlishaChat() {
       chatHistoryRef.current.push({ role: 'assistant', content: reply });
 
       if (ttsEnabled) {
-        ttsRef.current.speak(reply, 'ar');
+        // Detect language of response for correct TTS pronunciation
+        const detectedLang = /[\u0600-\u06FF]/.test(reply) ? 'ar' : 'en';
+        ttsRef.current.speak(reply, detectedLang);
       }
     } catch (error: any) {
       const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: `عذراً، حدث خطأ: ${error.message}`,
         timestamp: new Date(),
@@ -234,19 +241,22 @@ export default function AlishaChat() {
     } finally {
       setIsThinking(false);
     }
-  }, [llmProvider, llmModel, customKeys, ttsEnabled]);
+  }, [llmProvider, llmModel, customKeys, ttsEnabled, isThinking]);
 
   // Get custom API key for a provider
   const getCustomKeyForProvider = useCallback((provider: LLMProviderId): string | undefined => {
-    const keyMap: Record<LLMProviderId, keyof CustomAPIKeys> = {
-      zai: 'openrouter', // ZAI doesn't use custom keys
+    // ZAI doesn't use custom API keys
+    if (provider === 'zai') return undefined;
+    const keyMap: Record<LLMProviderId, keyof CustomAPIKeys | undefined> = {
+      zai: undefined,
       openrouter: 'openrouter',
       google: 'google',
       nvidia: 'nvidia',
       abliteration: 'abliteration',
       huggingface: 'huggingface',
     };
-    return customKeys[keyMap[provider]];
+    const key = keyMap[provider];
+    return key ? customKeys[key] : undefined;
   }, [customKeys]);
 
   // Update a custom API key
