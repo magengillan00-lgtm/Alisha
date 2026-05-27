@@ -15,6 +15,7 @@ import {
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
 import { createSpeechRecognition, speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio, requestMicrophonePermission, isSpeaking as checkIsSpeaking } from '@/lib/speech';
+import { AssemblyAISTREAMING_STT } from '@/lib/assemblyai/stt';
 import { sendMessage } from '@/lib/gemini-client';
 import { sendFreeKeyMessage } from '@/lib/free-keys';
 import SettingsDialog from '@/components/SettingsDialog';
@@ -50,6 +51,8 @@ export default function ChatView() {
     markKeyExhausted,
     switchToNextAvailableKey,
     setSelectedModel,
+    sttProvider,
+    setSttProvider,
   } = useAppStore();
 
   const [textInput, setTextInput] = useState('');
@@ -62,6 +65,8 @@ export default function ChatView() {
   const [showTextInput, setShowTextInput] = useState(false);
   const [accumulatedText, setAccumulatedText] = useState('');
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const assemblyaiRef = useRef<AssemblyAISTREAMING_STT | null>(null);
+  const [assemblyaiStatus, setAssemblyaiStatus] = useState<string>('disconnected');
 
   const recognitionRef = useRef<unknown>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +109,46 @@ export default function ChatView() {
       document.removeEventListener('touchstart', handleFirstInteraction);
     };
   }, []);
+
+  // Initialize AssemblyAI STT when provider changes
+  useEffect(() => {
+    if (sttProvider === 'assemblyai') {
+      const stt = new AssemblyAISTREAMING_STT({
+        tokenEndpoint: '/api/aai-token',
+      });
+      stt.setCallbacks(
+        (result) => {
+          if (result.isFinal) {
+            setAccumulatedText(prev => {
+              const newText = prev ? prev + ' ' + result.text : result.text;
+              return newText;
+            });
+            setInterimText('');
+          } else {
+            setInterimText(result.text);
+          }
+        },
+        (error) => {
+          console.error('AssemblyAI error:', error.message);
+          setIsRecording(false);
+          setAvatarState('idle');
+          setError('خطأ في AssemblyAI: ' + error.message);
+        },
+        (status) => {
+          setAssemblyaiStatus(status);
+          if (status === 'listening') setAvatarState('listening');
+          else if (status === 'processing') setAvatarState('listening');
+          else if (status === 'disconnected' || status === 'error') {
+            if (!isRecordingRef.current) setAvatarState('idle');
+          }
+        }
+      );
+      assemblyaiRef.current = stt;
+    }
+    return () => {
+      assemblyaiRef.current?.stop();
+    };
+  }, [sttProvider]);
 
   // Auto-dismiss key switch notice
   useEffect(() => {
@@ -174,6 +219,24 @@ export default function ChatView() {
 
   // --- Voice Recording (Main Screen) ---
   const startRecording = useCallback(() => {
+    // AssemblyAI mode
+    if (sttProvider === 'assemblyai' && assemblyaiRef.current) {
+      cancelSpeech();
+      setIsSpeaking(false);
+      setAvatarState('idle');
+      setInterimText('');
+      setAccumulatedText('');
+      setIsRecording(true);
+      setAvatarState('listening');
+      assemblyaiRef.current.start().catch((error: any) => {
+        setIsRecording(false);
+        setAvatarState('idle');
+        setError('فشل في بدء AssemblyAI: ' + error.message);
+      });
+      return;
+    }
+
+    // Web Speech API mode
     const lang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
 
     const recognition = createSpeechRecognition(
@@ -250,9 +313,26 @@ export default function ChatView() {
     setAvatarState('listening');
     setInterimText('');
     setAccumulatedText('');
-  }, [responseLanguage, setError, setAvatarState]);
+  }, [responseLanguage, setError, setAvatarState, sttProvider]);
 
   const stopRecording = useCallback(() => {
+    // AssemblyAI mode
+    if (sttProvider === 'assemblyai' && assemblyaiRef.current) {
+      assemblyaiRef.current.stop();
+      setIsRecording(false);
+      setAvatarState('idle');
+      setAccumulatedText(prev => {
+        if (prev.trim()) {
+          const text = prev.trim();
+          setTimeout(() => sendUserMessage(text), 100);
+        }
+        return '';
+      });
+      setInterimText('');
+      return;
+    }
+
+    // Web Speech API mode
     const recognition = recognitionRef.current as { stop: () => void; abort: () => void } | null;
     if (recognition) {
       try {
@@ -275,7 +355,7 @@ export default function ChatView() {
       return '';
     });
     setInterimText('');
-  }, [setAvatarState]);
+  }, [setAvatarState, sttProvider]);
 
   const handleMicPress = useCallback(() => {
     if (isRecording) {

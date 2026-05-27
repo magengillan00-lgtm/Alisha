@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 export type AppState = 'freeKeys' | 'selectModel' | 'chat';
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type ResponseLanguage = 'ar' | 'en' | 'ja';
+export type STTProvider = 'webspeech' | 'assemblyai';
 
 export interface Message {
   id: string;
@@ -126,6 +127,10 @@ interface AppStore {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  // STT Provider
+  sttProvider: STTProvider;
+  setSttProvider: (provider: STTProvider) => void;
+
   // Error
   error: string | null;
   setError: (error: string | null) => void;
@@ -210,6 +215,9 @@ export const useAppStore = create<AppStore>()(
       responseLanguage: 'ar',
       setResponseLanguage: (responseLanguage) => set({ responseLanguage }),
 
+      sttProvider: 'assemblyai',
+      setSttProvider: (sttProvider) => set({ sttProvider }),
+
       selectedBackground: '',
       setSelectedBackground: (selectedBackground) => set({ selectedBackground }),
 
@@ -253,6 +261,7 @@ export const useAppStore = create<AppStore>()(
         selectedModel: state.selectedModel,
         selectedBackground: state.selectedBackground,
         responseLanguage: state.responseLanguage,
+        sttProvider: state.sttProvider,
         permanentMemory: state.permanentMemory,
         freeKeys: state.freeKeys,
         exhaustedKeyIds: state.exhaustedKeyIds,

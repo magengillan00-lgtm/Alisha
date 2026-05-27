@@ -289,6 +289,8 @@ export default function SettingsDialog({ open, onClose, onMicPress, isRecording,
     setSelectedFreeKey,
     setModels,
     exhaustedKeyIds,
+    sttProvider,
+    setSttProvider,
   } = useAppStore();
 
   // Key section state
@@ -953,6 +955,46 @@ export default function SettingsDialog({ open, onClose, onMicPress, isRecording,
                 <p className="text-[10px] text-gray-600 mt-2">
                   الرد سيكون بلغة الإعدادات حتى لو أرسلت بلغة مختلفة
                 </p>
+              </SettingSection>
+
+              {/* ===== STT Provider ===== */}
+              <SettingSection icon={<Mic className="w-4 h-4" />} label="التعرف على الصوت" defaultOpen={false}>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setSttProvider('assemblyai')}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-xs ${
+                      sttProvider === 'assemblyai'
+                        ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                        : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                      <Mic className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <p className="font-medium">AssemblyAI</p>
+                      <p className="text-[10px] text-gray-500">دقة عالية + دعم العربية</p>
+                    </div>
+                    {sttProvider === 'assemblyai' && <Check className="w-3 h-3 text-emerald-400" />}
+                  </button>
+                  <button
+                    onClick={() => setSttProvider('webspeech')}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-xs ${
+                      sttProvider === 'webspeech'
+                        ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
+                        : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                      <Mic className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <div className="flex-1 text-right">
+                      <p className="font-medium">Web Speech API</p>
+                      <p className="text-[10px] text-gray-500">مدمج في المتصفح</p>
+                    </div>
+                    {sttProvider === 'webspeech' && <Check className="w-3 h-3 text-emerald-400" />}
+                  </button>
+                </div>
               </SettingSection>
 
               {/* ===== Voice Input (Mic) & Voice Output (Always On) ===== */}
