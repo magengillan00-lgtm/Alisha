@@ -4,12 +4,23 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { AssemblyAISTreamingSTT } from '@/lib/assemblyai-stt';
 import { STTProviderManager, STTProviderType } from '@/lib/stt-providers';
 import { getTTSService, TTSProvider } from '@/lib/tts-service';
+import {
+  LLM_PROVIDERS,
+  LLMProviderId,
+  DEFAULT_LLM_PROVIDER,
+  DEFAULT_LLM_MODEL,
+  CustomAPIKeys,
+  loadCustomAPIKeys,
+  saveCustomAPIKeys,
+  PROVIDER_LIST,
+} from '@/lib/llm-providers';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -17,6 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import {
   Mic,
   MicOff,
@@ -30,6 +47,12 @@ import {
   Sparkles,
   MessageCircle,
   X,
+  Key,
+  Cpu,
+  Globe,
+  ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface Message {
@@ -38,20 +61,43 @@ interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  provider?: string;
+  model?: string;
 }
 
 export default function AlishaChat() {
-  // State
+  // API base URL - works for both web server and Capacitor native
+  const getApiBase = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      // Check if running in Capacitor native app
+      const cap = (window as any).Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        // In native app, use remote server for API calls
+        return 'https://alisha.dpdns.org';
+      }
+    }
+    return ''; // Relative URL for web server
+  }, []);
+
+  // Chat State
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [interimText, setInterimText] = useState('');
+
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
   const [sttProvider, setSttProvider] = useState<STTProviderType>('assemblyai');
   const [ttsProvider, setTtsProvider] = useState<TTSProvider>('google');
-  const [sttStatus, setSttStatus] = useState<string>('disconnected');
-  const [interimText, setInterimText] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [sttStatus, setSttStatus] = useState<string>('disconnected');
+
+  // LLM Provider State
+  const [llmProvider, setLlmProvider] = useState<LLMProviderId>(DEFAULT_LLM_PROVIDER);
+  const [llmModel, setLlmModel] = useState<string>(DEFAULT_LLM_MODEL);
+  const [customKeys, setCustomKeys] = useState<CustomAPIKeys>({});
+  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Refs
@@ -60,10 +106,15 @@ export default function AlishaChat() {
   const ttsRef = useRef(getTTSService());
   const chatHistoryRef = useRef<Array<{ role: string; content: string }>>([]);
 
+  // Load custom API keys from localStorage
+  useEffect(() => {
+    setCustomKeys(loadCustomAPIKeys());
+  }, []);
+
   // Initialize STT Manager
   useEffect(() => {
     const assemblyaiSTT = new AssemblyAISTreamingSTT({
-      tokenEndpoint: '/api/aai-token',
+      tokenEndpoint: `${getApiBase()}/api/aai-token`,
     });
 
     const manager = new STTProviderManager();
@@ -110,6 +161,14 @@ export default function AlishaChat() {
     ttsRef.current.setProvider(ttsProvider);
   }, [ttsProvider]);
 
+  // Update model when provider changes
+  useEffect(() => {
+    const providerConfig = LLM_PROVIDERS[llmProvider];
+    if (providerConfig) {
+      setLlmModel(providerConfig.defaultModel);
+    }
+  }, [llmProvider]);
+
   // Send message to LLM
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
@@ -125,17 +184,20 @@ export default function AlishaChat() {
     setInputText('');
     setIsThinking(true);
 
-    // Add to chat history
     chatHistoryRef.current.push({ role: 'user', content: text });
 
     try {
-      const response = await fetch('/api/chat', {
+      const apiBase = getApiBase();
+      const response = await fetch(`${apiBase}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: chatHistoryRef.current.slice(-20), // Last 20 messages for context
+          history: chatHistoryRef.current.slice(-20),
           systemPrompt: `أنت أليشا، مساعدة ذكية ودودة. تتحدثين بالعربية والإنجليزية بطلاقة. أنتِ مساعدة شخصية تساعد المستخدم في أي شيء يحتاجه. كوني ودودة ومحترمة ومفيدة. ردودك يجب أن تكون واضحة ومختصرة. استخدمي العاطفة المناسبة والتعابير اللطيفة.`,
+          provider: llmProvider,
+          model: llmModel,
+          customApiKey: getCustomKeyForProvider(llmProvider),
         }),
       });
 
@@ -151,12 +213,13 @@ export default function AlishaChat() {
         role: 'assistant',
         content: reply,
         timestamp: new Date(),
+        provider: data.provider,
+        model: data.model,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
       chatHistoryRef.current.push({ role: 'assistant', content: reply });
 
-      // Speak the response
       if (ttsEnabled) {
         ttsRef.current.speak(reply, 'ar');
       }
@@ -171,7 +234,29 @@ export default function AlishaChat() {
     } finally {
       setIsThinking(false);
     }
-  }, [ttsEnabled]);
+  }, [llmProvider, llmModel, customKeys, ttsEnabled]);
+
+  // Get custom API key for a provider
+  const getCustomKeyForProvider = useCallback((provider: LLMProviderId): string | undefined => {
+    const keyMap: Record<LLMProviderId, keyof CustomAPIKeys> = {
+      zai: 'openrouter', // ZAI doesn't use custom keys
+      openrouter: 'openrouter',
+      google: 'google',
+      nvidia: 'nvidia',
+      abliteration: 'abliteration',
+      huggingface: 'huggingface',
+    };
+    return customKeys[keyMap[provider]];
+  }, [customKeys]);
+
+  // Update a custom API key
+  const updateCustomKey = useCallback((providerKey: keyof CustomAPIKeys, value: string) => {
+    setCustomKeys(prev => {
+      const updated = { ...prev, [providerKey]: value };
+      saveCustomAPIKeys(updated);
+      return updated;
+    });
+  }, []);
 
   // Toggle recording
   const toggleRecording = useCallback(async () => {
@@ -217,7 +302,7 @@ export default function AlishaChat() {
     setTtsEnabled(prev => !prev);
   }, []);
 
-  // Get recording status color
+  // Get recording status
   const getStatusColor = () => {
     if (sttStatus.includes('listening') || sttStatus.includes('connected')) return 'bg-green-500';
     if (sttStatus.includes('connecting') || sttStatus.includes('processing')) return 'bg-yellow-500';
@@ -232,6 +317,28 @@ export default function AlishaChat() {
     if (sttStatus.includes('error')) return ' خطأ';
     return ' غير متصل';
   };
+
+  // Get current LLM provider display name
+  const getCurrentProviderName = () => {
+    return LLM_PROVIDERS[llmProvider]?.nameAr || LLM_PROVIDERS[llmProvider]?.name || 'Z-AI';
+  };
+
+  const getCurrentModelName = () => {
+    const provider = LLM_PROVIDERS[llmProvider];
+    const modelObj = provider?.models.find(m => m.id === llmModel);
+    return modelObj?.name || llmModel;
+  };
+
+  // API key field definitions
+  const apiKeyFields: Array<{ key: keyof CustomAPIKeys; label: string; placeholder: string }> = [
+    { key: 'openrouter', label: 'OpenRouter', placeholder: 'sk-or-v1-...' },
+    { key: 'google', label: 'Google AI Studio', placeholder: 'AIzaSy...' },
+    { key: 'nvidia', label: 'NVIDIA NIM', placeholder: 'nvapi-...' },
+    { key: 'abliteration', label: 'Abliteration AI', placeholder: 'ak_...' },
+    { key: 'huggingface', label: 'HuggingFace', placeholder: 'hf_...' },
+    { key: 'alchemy', label: 'Alchemy (Web3)', placeholder: 'Ql-...' },
+    { key: 'assemblyai', label: 'AssemblyAI (STT)', placeholder: 'Your key...' },
+  ];
 
   return (
     <div className="flex flex-col h-screen max-h-screen bg-gradient-to-br from-slate-950 via-purple-950/30 to-slate-950 text-white" dir="rtl">
@@ -272,61 +379,195 @@ export default function AlishaChat() {
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="border-b border-white/10 bg-black/30 backdrop-blur-xl p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-300">الإعدادات</h3>
-            <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="h-6 w-6 text-slate-400">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {/* STT Provider */}
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">التعرف على الكلام</Label>
-              <Select
-                value={sttProvider}
-                onValueChange={(v) => setSttProvider(v as STTProviderType)}
-              >
-                <SelectTrigger className="bg-white/5 border-white/10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="assemblyai">AssemblyAI (افتراضي)</SelectItem>
-                  <SelectItem value="web-speech">Web Speech API</SelectItem>
-                </SelectContent>
-              </Select>
+        <div className="border-b border-white/10 bg-black/30 backdrop-blur-xl max-h-[60vh] overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-300">الإعدادات</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowSettings(false)} className="h-6 w-6 text-slate-400">
+                <X className="w-4 h-4" />
+              </Button>
             </div>
 
-            {/* TTS Provider */}
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">تحويل النص لصوت</Label>
-              <Select
-                value={ttsProvider}
-                onValueChange={(v) => setTtsProvider(v as TTSProvider)}
-              >
-                <SelectTrigger className="bg-white/5 border-white/10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="google">Google TTS</SelectItem>
-                  <SelectItem value="web-speech">Web Speech API</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+            <Accordion type="multiple" defaultValue={['llm', 'voice', 'keys']} className="space-y-2">
+              {/* LLM Provider Settings */}
+              <AccordionItem value="llm" className="border border-white/10 rounded-lg px-3">
+                <AccordionTrigger className="text-xs font-semibold text-slate-300 hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-violet-400" />
+                    مزود الذكاء الاصطناعي
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 pb-4">
+                  {/* Provider Selection */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">المزود</Label>
+                    <Select
+                      value={llmProvider}
+                      onValueChange={(v) => setLlmProvider(v as LLMProviderId)}
+                    >
+                      <SelectTrigger className="bg-white/5 border-white/10 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROVIDER_LIST.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.nameAr} - {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-          {/* TTS Toggle */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="tts-toggle" className="text-xs text-slate-400">تشغيل الردود الصوتية</Label>
-            <Switch
-              id="tts-toggle"
-              checked={ttsEnabled}
-              onCheckedChange={(checked) => {
-                setTtsEnabled(checked);
-                if (!checked) ttsRef.current.stop();
-              }}
-            />
+                  {/* Model Selection */}
+                  {LLM_PROVIDERS[llmProvider]?.models.length > 1 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400">النموذج</Label>
+                      <Select
+                        value={llmModel}
+                        onValueChange={setLlmModel}
+                      >
+                        <SelectTrigger className="bg-white/5 border-white/10 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LLM_PROVIDERS[llmProvider]?.models.map(m => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Provider Info */}
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-xs text-slate-400">{LLM_PROVIDERS[llmProvider]?.description}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">النموذج الحالي: {getCurrentModelName()}</p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Voice Settings */}
+              <AccordionItem value="voice" className="border border-white/10 rounded-lg px-3">
+                <AccordionTrigger className="text-xs font-semibold text-slate-300 hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-fuchsia-400" />
+                    إعدادات الصوت
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 pb-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* STT Provider */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400">التعرف على الكلام</Label>
+                      <Select
+                        value={sttProvider}
+                        onValueChange={(v) => setSttProvider(v as STTProviderType)}
+                      >
+                        <SelectTrigger className="bg-white/5 border-white/10 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="assemblyai">AssemblyAI (افتراضي)</SelectItem>
+                          <SelectItem value="web-speech">Web Speech API</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* TTS Provider */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400">تحويل النص لصوت</Label>
+                      <Select
+                        value={ttsProvider}
+                        onValueChange={(v) => setTtsProvider(v as TTSProvider)}
+                      >
+                        <SelectTrigger className="bg-white/5 border-white/10 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="google">Google TTS</SelectItem>
+                          <SelectItem value="web-speech">Web Speech API</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* TTS Toggle */}
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="tts-toggle" className="text-xs text-slate-400">تشغيل الردود الصوتية</Label>
+                    <Switch
+                      id="tts-toggle"
+                      checked={ttsEnabled}
+                      onCheckedChange={(checked) => {
+                        setTtsEnabled(checked);
+                        if (!checked) ttsRef.current.stop();
+                      }}
+                    />
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* API Keys */}
+              <AccordionItem value="keys" className="border border-white/10 rounded-lg px-3">
+                <AccordionTrigger className="text-xs font-semibold text-slate-300 hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-amber-400" />
+                    مفاتيح API
+                    <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 mr-2">
+                      إدخال يدوي
+                    </Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 pb-4">
+                  <p className="text-[10px] text-slate-500">
+                    أدخل مفاتيح API الخاصة بك هنا. يتم تخزينها محلياً على جهازك فقط.
+                    إذا تركت الحقل فارغاً، سيتم استخدام المفتاح الافتراضي.
+                  </p>
+
+                  {apiKeyFields.map(field => (
+                    <div key={field.key} className="space-y-1">
+                      <Label className="text-xs text-slate-400">{field.label}</Label>
+                      <div className="relative">
+                        <Input
+                          type={showApiKeys[field.key] ? 'text' : 'password'}
+                          value={customKeys[field.key] || ''}
+                          onChange={(e) => updateCustomKey(field.key, e.target.value)}
+                          placeholder={field.placeholder}
+                          className="bg-white/5 border-white/10 text-sm pl-10 pr-3 font-mono text-xs"
+                          dir="ltr"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute left-1 top-1/2 -translate-y-1/2 h-7 w-7 text-slate-500 hover:text-white"
+                          onClick={() => setShowApiKeys(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
+                        >
+                          {showApiKeys[field.key] ? (
+                            <EyeOff className="w-3 h-3" />
+                          ) : (
+                            <Eye className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Clear all keys */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs border-red-500/20 text-red-400 hover:bg-red-500/10 hover:text-red-300 mt-2"
+                    onClick={() => {
+                      setCustomKeys({});
+                      saveCustomAPIKeys({});
+                    }}
+                  >
+                    حذف جميع المفاتيح المحفوظة
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
         </div>
       )}
@@ -362,6 +603,17 @@ export default function AlishaChat() {
                 </Button>
               ))}
             </div>
+
+            {/* Provider Info */}
+            <div className="flex items-center gap-2 mt-4">
+              <Badge variant="outline" className="text-[10px] border-violet-500/30 text-violet-400">
+                <Cpu className="w-3 h-3 ml-1" />
+                {getCurrentProviderName()}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] border-fuchsia-500/30 text-fuchsia-400">
+                {getCurrentModelName()}
+              </Badge>
+            </div>
           </div>
         )}
 
@@ -388,11 +640,18 @@ export default function AlishaChat() {
                 : 'bg-violet-600/20 border-violet-500/20 text-violet-50'
             }`}>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-              <p className={`text-[10px] mt-1 ${
+              <div className={`flex items-center gap-2 mt-1 ${
                 msg.role === 'user' ? 'text-blue-300/50' : 'text-violet-300/50'
               }`}>
-                {msg.timestamp.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
-              </p>
+                <p className="text-[10px]">
+                  {msg.timestamp.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+                {msg.provider && msg.role === 'assistant' && (
+                  <p className="text-[10px]">
+                    via {msg.provider}/{msg.model}
+                  </p>
+                )}
+              </div>
             </Card>
           </div>
         ))}
@@ -419,6 +678,9 @@ export default function AlishaChat() {
               <div className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 text-violet-300 animate-spin" />
                 <span className="text-sm text-violet-300">أليشا تكتب...</span>
+                <Badge variant="outline" className="text-[9px] border-white/10 text-slate-500">
+                  {getCurrentProviderName()}
+                </Badge>
               </div>
             </Card>
           </div>
@@ -494,6 +756,11 @@ export default function AlishaChat() {
 
         {/* Provider Badge */}
         <div className="flex items-center justify-center gap-2 mt-2">
+          <Badge variant="outline" className="text-[10px] border-violet-500/30 text-violet-400">
+            <Cpu className="w-3 h-3 ml-1" />
+            {getCurrentProviderName()} / {getCurrentModelName()}
+          </Badge>
+          <span className="text-[10px] text-slate-600">•</span>
           <Badge variant="outline" className="text-[10px] border-white/10 text-slate-500">
             {sttProvider === 'assemblyai' ? 'AssemblyAI' : 'Web Speech API'}
           </Badge>

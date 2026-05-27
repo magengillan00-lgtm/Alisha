@@ -52,3 +52,15 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Capacitor Android build artifacts
+android/app/build/
+android/.gradle/
+android/build/
+
+# APK files in download (binary artifacts)
+download/*.apk
+
+# Database
+db/
+*.db
