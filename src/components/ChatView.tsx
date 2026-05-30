@@ -12,8 +12,6 @@ import {
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
 import { speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
-import { sendMessage } from '@/lib/gemini-client';
-import { sendFreeKeyMessage } from '@/lib/free-keys';
 import { createSTTSession, type STTSession } from '@/lib/stt-providers';
 import { hasServerKey } from '@/lib/llm-providers';
 import SettingsDialog from '@/components/SettingsDialog';
@@ -44,10 +42,6 @@ export default function ChatView() {
     activeProvider,
     apiKeys,
     permanentMemory,
-    selectedFreeKey,
-    isUsingFreeKey,
-    markKeyExhausted,
-    switchToNextAvailableKey,
     setSelectedModel,
     sttProvider,
   } = useAppStore();
@@ -57,7 +51,6 @@ export default function ChatView() {
   const [interimText, setInterimText] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [lastUserText, setLastUserText] = useState('');
-  const [keySwitchNotice, setKeySwitchNotice] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const sttSessionRef = useRef<STTSession | null>(null);
@@ -81,14 +74,6 @@ export default function ChatView() {
       document.removeEventListener('touchstart', handleFirstInteraction);
     };
   }, []);
-
-  // Auto-dismiss key switch notice
-  useEffect(() => {
-    if (keySwitchNotice) {
-      const timer = setTimeout(() => setKeySwitchNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [keySwitchNotice]);
 
   // Auto-dismiss error
   useEffect(() => {
@@ -230,76 +215,31 @@ export default function ChatView() {
 
         let responseText: string;
 
-        if (isUsingFreeKey && selectedFreeKey) {
-          // Use free key API
-          try {
-            const systemPrompt = buildSystemPrompt();
-            responseText = await sendFreeKeyMessage(
-              selectedFreeKey,
-              selectedModel,
-              chatMessages,
-              systemPrompt
-            );
-          } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : '';
-
-            if (errorMsg === 'RATE_LIMITED' || errorMsg === 'KEY_EXPIRED') {
-              if (retryCount < 5) {
-                // Mark current key as exhausted
-                markKeyExhausted(selectedFreeKey.id);
-
-                // Try switching to next available key
-                const nextKey = switchToNextAvailableKey();
-
-                if (nextKey) {
-                  setKeySwitchNotice(`تم التبديل إلى مفتاح: ${nextKey.category} - ${nextKey.model}`);
-
-                  // If the model changed, update it
-                  if (nextKey.model !== selectedModel) {
-                    setSelectedModel(nextKey.model);
-                  }
-
-                  // Retry with new key (isRetry = true to avoid duplicate user message)
-                  setIsLoading(false);
-                  setAvatarState('idle');
-                  setTimeout(() => sendUserMessage(text, retryCount + 1, true), 500);
-                  return;
-                } else {
-                  throw new Error('تم نفاد جميع المفاتيح المتاحة. حاول مرة أخرى لاحقاً أو أدخل مفتاحك يدوياً من الإعدادات.');
-                }
-              } else {
-                throw new Error('تم تجاوز عدد المحاولات. حاول مرة أخرى لاحقاً.');
-              }
-            }
-            throw err;
-          }
-        } else {
-          // Use server-side API proxy (keys are kept secure on server)
-          const activeKey = getActiveApiKey();
-          const serverHasKey = hasServerKey(activeProvider);
-          
-          if (!activeKey && !serverHasKey) {
-            throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
-          }
-          
-          // Route through server proxy for security
-          const systemPrompt = buildSystemPrompt();
-          const chatRes = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: activeProvider,
-              model: selectedModel,
-              messages: chatMessages,
-              systemPrompt,
-              apiKey: activeKey || undefined, // undefined = use server default key
-            }),
-          });
-          
-          const chatData = await chatRes.json();
-          if (chatData.error) throw new Error(chatData.error);
-          responseText = chatData.text;
+        // Use server-side API proxy (keys are kept secure on server)
+        const activeKey = getActiveApiKey();
+        const serverHasKey = hasServerKey(activeProvider);
+        
+        if (!activeKey && !serverHasKey) {
+          throw new Error('لم يتم العثور على مفتاح API. يرجى إضافة مفتاح من الإعدادات.');
         }
+        
+        // Route through server proxy for security
+        const systemPrompt = buildSystemPrompt();
+        const chatRes = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: activeProvider,
+            model: selectedModel,
+            messages: chatMessages,
+            systemPrompt,
+            apiKey: activeKey || undefined, // undefined = use server default key
+          }),
+        });
+        
+        const chatData = await chatRes.json();
+        if (chatData.error) throw new Error(chatData.error);
+        responseText = chatData.text;
 
         const assistantMsg = {
           id: (Date.now() + 1).toString(),
@@ -333,7 +273,7 @@ export default function ChatView() {
         setIsLoading(false);
       }
     },
-    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, isUsingFreeKey, selectedFreeKey, markKeyExhausted, switchToNextAvailableKey, setSelectedModel, buildSystemPrompt]
+    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, setSelectedModel, buildSystemPrompt]
   );
 
   const handleTextSubmit = useCallback(
@@ -386,9 +326,6 @@ export default function ChatView() {
             <h1 className="text-xs font-semibold text-white truncate max-w-[160px]" dir="ltr">{selectedModel}</h1>
             <p className="text-[10px] text-gray-500">
               {responseLanguage === 'ar' ? 'عربي' : responseLanguage === 'en' ? 'English' : '日本語'}
-              {isUsingFreeKey && selectedFreeKey && (
-                <span className="text-emerald-500"> · {selectedFreeKey.category}</span>
-              )}
             </p>
           </div>
         </div>
@@ -425,18 +362,6 @@ export default function ChatView() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Key switch notice */}
-      {keySwitchNotice && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          className="relative z-20 bg-amber-500/20 border-b border-amber-500/30 px-4 py-2"
-        >
-          <p className="text-xs text-amber-300 text-center">{keySwitchNotice}</p>
-        </motion.div>
-      )}
 
       {/* Main content - Full screen avatar */}
       <div className="flex-1 relative z-10 overflow-hidden min-h-0">

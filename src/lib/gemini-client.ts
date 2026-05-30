@@ -551,3 +551,27 @@ export async function sendMessage(
   const text = await p.sendMessage(apiKey, model, formattedMessages, systemPrompt);
   return { text };
 }
+
+/**
+ * Verify that a manual API key and model combination works.
+ * Returns { success: boolean, error?: string }
+ */
+export async function verifyManualKeyModel(
+  provider: string,
+  apiKey: string,
+  model: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const p = PROVIDERS[provider as ApiProvider];
+    if (!p) return { success: false, error: 'مزود غير معروف' };
+
+    const works = await p.testModel(apiKey, model);
+    if (works) {
+      return { success: true };
+    }
+    return { success: false, error: 'الموديل لا يعمل مع هذا المفتاح' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'فشل التحقق';
+    return { success: false, error: msg };
+  }
+}

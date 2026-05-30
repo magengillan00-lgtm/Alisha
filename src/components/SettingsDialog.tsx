@@ -22,14 +22,12 @@ import {
   Loader2,
   Eye,
   EyeOff,
-  RefreshCw,
   Zap,
   Mic,
   Shield,
 } from 'lucide-react';
-import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type FreeKey, type SttProvider } from '@/store/useAppStore';
-import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
-import { fetchFreeKeys, fetchFreeKeyModels, verifyKeyModel, verifyManualKeyModel, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
+import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type SttProvider } from '@/store/useAppStore';
+import { PROVIDER_INFO, listModels, verifyManualKeyModel } from '@/lib/gemini-client';
 import { hasServerKey } from '@/lib/llm-providers';
 import { STT_PROVIDERS } from '@/lib/stt-providers';
 
@@ -278,22 +276,13 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     apiKeys,
     setApiKeys,
     setActiveProvider,
-    setIsUsingFreeKey,
-    isUsingFreeKey,
-    selectedFreeKey,
-    freeKeys,
-    setFreeKeys,
-    setSelectedFreeKey,
     setModels,
-    exhaustedKeyIds,
     sttProvider,
     setSttProvider,
   } = useAppStore();
 
   // Key section state
   const [showKeySection, setShowKeySection] = useState(false);
-  const [showFreeKeysList, setShowFreeKeysList] = useState(false);
-  const [isLoadingFreeKeys, setIsLoadingFreeKeys] = useState(false);
   const [switchingKeyId, setSwitchingKeyId] = useState<string | null>(null);
 
   // Manual key entry state
@@ -373,7 +362,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleReset = () => {
     clearMessages();
-    setAppState('freeKeys');
+    setAppState('selectModel');
     onClose();
   };
 
@@ -400,41 +389,6 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     );
   };
 
-  // Load free keys
-  const loadFreeKeys = async () => {
-    setIsLoadingFreeKeys(true);
-    try {
-      const keys = await fetchFreeKeys();
-      setFreeKeys(keys);
-    } catch {
-      // keep existing keys
-    } finally {
-      setIsLoadingFreeKeys(false);
-    }
-  };
-
-  // Switch to a different free key
-  const handleSwitchToFreeKey = async (key: FreeKey) => {
-    setSwitchingKeyId(key.id);
-    try {
-      const newModels = await fetchFreeKeyModels(key);
-      setSelectedFreeKey(key);
-      setIsUsingFreeKey(true);
-      setModels(newModels);
-      // Auto-select the key's default model
-      setSelectedModel(key.model);
-      clearMessages();
-      setShowFreeKeysList(false);
-      setShowKeySection(false);
-      setKeyChanged(true); // Mark as changed so Save button appears
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'فشل في جلب الموديلات';
-      setAddKeyError(msg);
-    } finally {
-      setSwitchingKeyId(null);
-    }
-  };
-
   // Add manual key
   const handleAddManualKey = async () => {
     if (!manualKeyInput.trim()) { setAddKeyError('يرجى إدخال المفتاح'); return; }
@@ -444,7 +398,6 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       const data = await listModels(manualKeyProvider, manualKeyInput.trim());
       useAppStore.getState().addApiKey({ provider: manualKeyProvider, key: manualKeyInput.trim() });
       setActiveProvider(manualKeyProvider);
-      setIsUsingFreeKey(false);
       setModels(data.models);
       if (data.models.length > 0) {
         setSelectedModel(data.models[0]);
@@ -467,7 +420,6 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setSwitchingKeyId(`manual-${provider}`);
     try {
       setActiveProvider(provider);
-      setIsUsingFreeKey(false);
       clearMessages();
       // Fetch models for this provider/key
       const data = await listModels(provider, key);
@@ -490,17 +442,12 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setIsVerifying(true);
     setVerifyResult(null);
     try {
-      if (isUsingFreeKey && selectedFreeKey) {
-        const result = await verifyKeyModel(selectedFreeKey, selectedModel);
+      const currentKey = apiKeys.find((k) => k.provider === activeProvider)?.key || '';
+      if (currentKey) {
+        const result = await verifyManualKeyModel(activeProvider, currentKey, selectedModel);
         setVerifyResult(result);
       } else {
-        const currentKey = apiKeys.find((k) => k.provider === activeProvider)?.key || '';
-        if (currentKey) {
-          const result = await verifyManualKeyModel(activeProvider, currentKey, selectedModel);
-          setVerifyResult(result);
-        } else {
-          setVerifyResult({ success: false, error: 'لا يوجد مفتاح API' });
-        }
+        setVerifyResult({ success: false, error: 'لا يوجد مفتاح API' });
       }
     } catch (err) {
       setVerifyResult({ success: false, error: 'فشل التحقق' });
@@ -572,22 +519,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               {/* ===== Current Key Info ===== */}
               <div className="bg-white/[0.03] rounded-2xl border border-white/[0.06] px-4 py-3">
                 <div className="flex items-center gap-3">
-                  {isUsingFreeKey && selectedFreeKey ? (
-                    <>
-                      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${getCategoryColor(selectedFreeKey.category)} flex items-center justify-center text-lg flex-shrink-0`}>
-                        {getCategoryIcon(selectedFreeKey.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white font-medium">{selectedFreeKey.category} - مفتاح مجاني</p>
-                        <p className="text-xs text-gray-500" dir="ltr">{selectedFreeKey.key.slice(0, 8)}...{selectedFreeKey.key.slice(-4)}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-gray-600">{selectedFreeKey.budget}</span>
-                          <span className="text-[10px] text-gray-700">|</span>
-                          <span className="text-[10px] text-gray-600">ينتهي: {selectedFreeKey.expires}</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : providerInfo ? (
+                  {providerInfo ? (
                     <>
                       <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${providerInfo.color} flex items-center justify-center text-lg flex-shrink-0`}>
                         {providerInfo.icon}
@@ -613,94 +545,6 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               {/* ===== Change Key Section ===== */}
               <SettingSection icon={<Key className="w-4 h-4" />} label="تغيير المفتاح" defaultOpen={false}>
                 <div className="space-y-2">
-                  {/* Toggle free keys list */}
-                  <button
-                    onClick={() => {
-                      setShowFreeKeysList(!showFreeKeysList);
-                      if (!showFreeKeysList && freeKeys.length === 0) {
-                        loadFreeKeys();
-                      }
-                    }}
-                    className="w-full flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                      <Zap className="w-4 h-4 text-emerald-400" />
-                    </div>
-                    <div className="flex-1 text-right">
-                      <p className="text-xs text-white font-medium">المفاتيح المجانية</p>
-                      <p className="text-[10px] text-gray-500">{freeKeys.length} مفتاح متاح</p>
-                    </div>
-                    <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${showFreeKeysList ? 'rotate-90' : ''}`} />
-                  </button>
-
-                  {/* Free keys list */}
-                  <AnimatePresence>
-                    {showFreeKeysList && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar bg-white/5 rounded-xl p-2 border border-white/[0.06]">
-                          {isLoadingFreeKeys ? (
-                            <div className="flex items-center justify-center py-4 gap-2">
-                              <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
-                              <p className="text-xs text-gray-400">جاري التحميل...</p>
-                            </div>
-                          ) : freeKeys.length === 0 ? (
-                            <div className="flex items-center justify-center py-4">
-                              <button onClick={loadFreeKeys} className="text-xs text-emerald-400 flex items-center gap-1">
-                                <RefreshCw className="w-3 h-3" />
-                                تحديث المفاتيح
-                              </button>
-                            </div>
-                          ) : (
-                            freeKeys.map((key) => {
-                              const isCurrent = isUsingFreeKey && selectedFreeKey?.id === key.id;
-                              const isExhausted = exhaustedKeyIds.includes(key.id);
-                              return (
-                                <button
-                                  key={key.id}
-                                  onClick={() => !isExhausted && handleSwitchToFreeKey(key)}
-                                  disabled={isExhausted || switchingKeyId !== null}
-                                  className={`w-full text-right px-3 py-2 rounded-lg border transition-all text-xs flex items-center gap-2 ${
-                                    isCurrent
-                                      ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
-                                      : isExhausted
-                                      ? 'bg-red-500/5 border-red-500/10 text-gray-600 opacity-50'
-                                      : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10 hover:border-white/10'
-                                  }`}
-                                >
-                                  <div className={`w-7 h-7 rounded bg-gradient-to-br ${getCategoryColor(key.category)} flex items-center justify-center text-sm flex-shrink-0`}>
-                                    {getCategoryIcon(key.category)}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium truncate">{key.category}</p>
-                                    <p className="text-[10px] text-gray-500 truncate" dir="ltr">{key.model}</p>
-                                  </div>
-                                  {switchingKeyId === key.id ? (
-                                    <Loader2 className="w-3 h-3 text-emerald-400 animate-spin flex-shrink-0" />
-                                  ) : isCurrent ? (
-                                    <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                                  ) : isExhausted ? (
-                                    <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-                                  ) : null}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                        <div className="flex justify-center mt-1">
-                          <button onClick={loadFreeKeys} disabled={isLoadingFreeKeys} className="text-[10px] text-gray-500 hover:text-gray-400 flex items-center gap-1">
-                            <RefreshCw className={`w-3 h-3 ${isLoadingFreeKeys ? 'animate-spin' : ''}`} />
-                            تحديث
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
                   {/* Toggle manual key form */}
                   <button
                     onClick={() => setShowManualKeyForm(!showManualKeyForm)}
@@ -797,7 +641,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       <p className="text-[10px] text-gray-500 px-1">المفاتيح اليدوية المحفوظة:</p>
                       {apiKeys.map((entry) => {
                         const pInfo = PROVIDER_INFO.find((p) => p.id === entry.provider);
-                        const isActive = !isUsingFreeKey && activeProvider === entry.provider;
+                        const isActive = activeProvider === entry.provider;
                         return (
                           <button
                             key={entry.provider}

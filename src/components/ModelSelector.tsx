@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw, ArrowRight } from 'lucide-react';
+import { Cpu, ArrowLeft, Loader2, Check, Sparkles, RotateCcw, ArrowRight, Key } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels } from '@/lib/gemini-client';
-import { fetchFreeKeyModels, getCategoryIcon, getCategoryColor } from '@/lib/free-keys';
+import SetupWizard from '@/components/SetupWizard';
 
 export default function ModelSelector() {
   const {
@@ -16,11 +16,10 @@ export default function ModelSelector() {
     clearMessages,
     activeProvider,
     apiKeys,
-    isUsingFreeKey,
-    selectedFreeKey,
   } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [showSetup, setShowSetup] = useState(false);
 
   const providerInfo = PROVIDER_INFO.find((p) => p.id === activeProvider);
   const apiKey = apiKeys.find((k) => k.provider === activeProvider)?.key || '';
@@ -43,23 +42,8 @@ export default function ModelSelector() {
     }, 500);
   };
 
-  const handleBack = () => {
-    setSelectedModel('');
-    setAppState('freeKeys');
-  };
-
   const handleRefresh = async () => {
-    if (isUsingFreeKey && selectedFreeKey) {
-      setIsLoading(true);
-      try {
-        const updatedModels = await fetchFreeKeyModels(selectedFreeKey);
-        useAppStore.getState().setModels(updatedModels);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setIsLoading(false);
-      }
-    } else if (apiKey) {
+    if (apiKey) {
       setIsLoading(true);
       try {
         const data = await listModels(activeProvider, apiKey);
@@ -71,6 +55,10 @@ export default function ModelSelector() {
       }
     }
   };
+
+  if (showSetup) {
+    return <SetupWizard onBack={() => setShowSetup(false)} />;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-950 via-gray-900 to-emerald-950">
@@ -97,14 +85,7 @@ export default function ModelSelector() {
             <Cpu className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">اختر الموديل</h1>
-          {isUsingFreeKey && selectedFreeKey ? (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <div className={`w-6 h-6 rounded bg-gradient-to-br ${getCategoryColor(selectedFreeKey.category)} flex items-center justify-center text-sm`}>
-                {getCategoryIcon(selectedFreeKey.category)}
-              </div>
-              <p className="text-gray-400 text-sm">{selectedFreeKey.category} - مفتاح مجاني</p>
-            </div>
-          ) : providerInfo ? (
+          {providerInfo ? (
             <div className="flex items-center justify-center gap-2 mt-2">
               <span className="text-lg">{providerInfo.icon}</span>
               <p className="text-gray-400 text-sm">{providerInfo.name} - {providerInfo.nameAr}</p>
@@ -164,7 +145,14 @@ export default function ModelSelector() {
               ))}
             </AnimatePresence>
 
-            {filteredModels.length === 0 && (
+            {filteredModels.length === 0 && models.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <Key className="w-8 h-8 text-gray-600" />
+                <p className="text-sm text-gray-500">لا توجد موديلات - أدخل مفتاح API أولاً</p>
+              </div>
+            )}
+
+            {filteredModels.length === 0 && models.length > 0 && (
               <p className="text-center text-gray-500 text-sm py-8">
                 لا توجد موديلات مطابقة
               </p>
@@ -174,11 +162,11 @@ export default function ModelSelector() {
           {/* Actions */}
           <div className="flex gap-3">
             <button
-              onClick={handleBack}
+              onClick={() => setShowSetup(true)}
               className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2 text-sm"
             >
-              <ArrowRight className="w-4 h-4" />
-              رجوع
+              <Key className="w-4 h-4" />
+              إدخال مفتاح
             </button>
 
             <button

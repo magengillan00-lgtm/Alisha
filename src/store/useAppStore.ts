@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type AppState = 'freeKeys' | 'selectModel' | 'chat';
+export type AppState = 'selectModel' | 'chat';
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type ResponseLanguage = 'ar' | 'en' | 'ja';
 
@@ -29,20 +29,6 @@ export interface ApiKeyEntry {
   key: string;
 }
 
-// Free key type (imported from free-keys.ts)
-export interface FreeKey {
-  id: string;
-  key: string;
-  model: string;
-  status: 'new' | 'active' | 'rate_limited' | 'expired' | 'unknown';
-  budget: string;
-  rateLimit: string;
-  expires: string;
-  description: string;
-  category: string;
-  baseUrl: string;
-}
-
 export const DEFAULT_PERMANENT_MEMORY: MemoryItem[] = [
   {
     id: 'mem-1',
@@ -65,17 +51,6 @@ interface AppStore {
   // App flow
   appState: AppState;
   setAppState: (state: AppState) => void;
-
-  // Free Keys
-  freeKeys: FreeKey[];
-  setFreeKeys: (keys: FreeKey[]) => void;
-  selectedFreeKey: FreeKey | null;
-  setSelectedFreeKey: (key: FreeKey | null) => void;
-  exhaustedKeyIds: string[];
-  markKeyExhausted: (keyId: string) => void;
-  switchToNextAvailableKey: () => FreeKey | null;
-  isUsingFreeKey: boolean;
-  setIsUsingFreeKey: (val: boolean) => void;
 
   // API Keys - multi provider (manual)
   apiKeys: ApiKeyEntry[];
@@ -135,46 +110,8 @@ interface AppStore {
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
-      appState: 'freeKeys',
+      appState: 'selectModel',
       setAppState: (appState) => set({ appState }),
-
-      // Free Keys
-      freeKeys: [],
-      setFreeKeys: (freeKeys) => set({ freeKeys }),
-      selectedFreeKey: null,
-      setSelectedFreeKey: (selectedFreeKey) => set({ selectedFreeKey }),
-      exhaustedKeyIds: [],
-      markKeyExhausted: (keyId) =>
-        set((state) => ({
-          exhaustedKeyIds: [...new Set([...state.exhaustedKeyIds, keyId])],
-        })),
-      switchToNextAvailableKey: () => {
-        const { freeKeys, exhaustedKeyIds, selectedFreeKey } = get();
-        const currentKeyIndex = selectedFreeKey
-          ? freeKeys.findIndex((k) => k.id === selectedFreeKey.id)
-          : -1;
-
-        // Try keys after current first
-        for (let i = currentKeyIndex + 1; i < freeKeys.length; i++) {
-          if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
-            set({ selectedFreeKey: freeKeys[i] });
-            return freeKeys[i];
-          }
-        }
-
-        // Then try keys before current
-        for (let i = 0; i < currentKeyIndex; i++) {
-          if (!exhaustedKeyIds.includes(freeKeys[i].id)) {
-            set({ selectedFreeKey: freeKeys[i] });
-            return freeKeys[i];
-          }
-        }
-
-        // All keys exhausted
-        return null;
-      },
-      isUsingFreeKey: true,
-      setIsUsingFreeKey: (isUsingFreeKey) => set({ isUsingFreeKey }),
 
       // Multi-provider API keys (manual entry)
       apiKeys: [],
@@ -247,15 +184,11 @@ export const useAppStore = create<AppStore>()(
       name: 'alisha-store',
       partialize: (state) => ({
         apiKeys: state.apiKeys,
-        selectedFreeKey: state.selectedFreeKey,
-        isUsingFreeKey: state.isUsingFreeKey,
         activeProvider: state.activeProvider,
         selectedModel: state.selectedModel,
         selectedBackground: state.selectedBackground,
         responseLanguage: state.responseLanguage,
         permanentMemory: state.permanentMemory,
-        freeKeys: state.freeKeys,
-        exhaustedKeyIds: state.exhaustedKeyIds,
         models: state.models,
         sttProvider: state.sttProvider,
       }),
@@ -263,13 +196,10 @@ export const useAppStore = create<AppStore>()(
         if (state) {
           state._hasHydrated = true;
           // Determine initial app state based on persisted data
-          const hasKey = state.isUsingFreeKey
-            ? !!state.selectedFreeKey
-            : state.apiKeys.length > 0;
-          if (hasKey && state.selectedModel) {
+          if (state.apiKeys.length > 0 && state.selectedModel) {
             state.appState = 'chat';
           } else {
-            state.appState = 'freeKeys';
+            state.appState = 'selectModel';
           }
         }
       },

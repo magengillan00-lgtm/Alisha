@@ -27,7 +27,7 @@ interface SetupWizardProps {
 }
 
 export default function SetupWizard({ onBack }: SetupWizardProps) {
-  const { setAppState, setApiKeys, setActiveProvider, setIsUsingFreeKey } = useAppStore();
+  const { setAppState, setApiKeys, setActiveProvider } = useAppStore();
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -65,7 +65,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
         const data = await listModels(provider, key);
         useAppStore.getState().addApiKey({ provider, key });
         setActiveProvider(provider);
-        setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
         if (data.models.length > 0) {
           useAppStore.getState().setSelectedModel(data.models[0]);
@@ -83,7 +82,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
             const data = await listModels(tryProvider, key);
             useAppStore.getState().addApiKey({ provider: tryProvider, key });
             setActiveProvider(tryProvider);
-            setIsUsingFreeKey(false);
             useAppStore.getState().setModels(data.models);
             if (data.models.length > 0) {
               useAppStore.getState().setSelectedModel(data.models[0]);
@@ -117,7 +115,6 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
         const data = await listModels(tryProvider, key);
         setApiKeys([{ provider: tryProvider, key }]);
         setActiveProvider(tryProvider);
-        setIsUsingFreeKey(false);
         useAppStore.getState().setModels(data.models);
         setAppState('selectModel');
         found = true;
@@ -157,7 +154,7 @@ export default function SetupWizard({ onBack }: SetupWizardProps) {
             className="mb-4 flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
           >
             <ArrowRight className="w-4 h-4" />
-            العودة للمفاتيح المجانية
+            العودة
           </motion.button>
         )}
 
