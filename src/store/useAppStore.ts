@@ -98,6 +98,10 @@ interface AppStore {
   sttProvider: SttProvider;
   setSttProvider: (provider: SttProvider) => void;
 
+  // Agent Router API Key
+  agentRouterKey: string;
+  setAgentRouterKey: (key: string) => void;
+
   // Error
   error: string | null;
   setError: (error: string | null) => void;
@@ -174,6 +178,9 @@ export const useAppStore = create<AppStore>()(
       sttProvider: 'assemblyai',
       setSttProvider: (sttProvider) => set({ sttProvider }),
 
+      agentRouterKey: '',
+      setAgentRouterKey: (agentRouterKey) => set({ agentRouterKey }),
+
       error: null,
       setError: (error) => set({ error }),
 
@@ -191,6 +198,7 @@ export const useAppStore = create<AppStore>()(
         permanentMemory: state.permanentMemory,
         models: state.models,
         sttProvider: state.sttProvider,
+        agentRouterKey: state.agentRouterKey,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

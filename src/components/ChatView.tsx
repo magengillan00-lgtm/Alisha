@@ -160,8 +160,7 @@ export default function ChatView() {
       );
 
       sttSessionRef.current = session;
-      unlockAudio();
-      warmupSpeech();
+      // Note: unlockAudio() is called from handleMicPress (user gesture) before this function
       session.start();
       setIsRecording(true);
       setAvatarState('listening');
@@ -280,6 +279,9 @@ export default function ChatView() {
     (e?: React.FormEvent) => {
       e?.preventDefault();
       if (textInput.trim()) {
+        // CRITICAL: unlockAudio() synchronously in gesture callstack before async sendUserMessage
+        unlockAudio();
+        warmupSpeech();
         sendUserMessage(textInput);
       }
     },
@@ -287,6 +289,10 @@ export default function ChatView() {
   );
 
   const handleMicPress = useCallback(() => {
+    // CRITICAL: unlockAudio() must be called synchronously here (in the gesture callstack)
+    // before any async operations, to unblock audio playback on Android WebView.
+    unlockAudio();
+    warmupSpeech();
     if (isRecording) {
       stopRecording();
     } else {

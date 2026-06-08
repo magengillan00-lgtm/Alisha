@@ -279,6 +279,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setModels,
     sttProvider,
     setSttProvider,
+    agentRouterKey,
+    setAgentRouterKey,
   } = useAppStore();
 
   // Key section state
@@ -293,6 +295,11 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [addKeyError, setAddKeyError] = useState<string | null>(null);
   const [addKeySuccess, setAddKeySuccess] = useState(false);
+
+  // Agent Router key state
+  const [agentRouterKeyInput, setAgentRouterKeyInput] = useState(agentRouterKey);
+  const [showAgentRouterKey, setShowAgentRouterKey] = useState(false);
+  const [agentRouterKeyChanged, setAgentRouterKeyChanged] = useState(false);
 
   // Model section state
   const [showModelSection, setShowModelSection] = useState(false);
@@ -317,7 +324,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     tempBackground !== selectedBackground ||
     JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory) ||
     keyChanged ||
-    modelChanged
+    modelChanged ||
+    agentRouterKeyChanged
   );
 
   // Also track direct key input changes for the save button
@@ -340,8 +348,10 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setKeyChanged(false);
       setModelChanged(false);
       setManualKeyChanged(false);
+      setAgentRouterKeyInput(agentRouterKey);
+      setAgentRouterKeyChanged(false);
     }
-  }, [open, responseLanguage, selectedBackground, permanentMemory]);
+  }, [open, responseLanguage, selectedBackground, permanentMemory, agentRouterKey]);
 
   const handleSave = () => {
     if (tempLanguage !== responseLanguage) {
@@ -353,10 +363,15 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory)) {
       setPermanentMemory(tempMemory);
     }
+    // Save agent router key
+    if (agentRouterKeyChanged) {
+      setAgentRouterKey(agentRouterKeyInput.trim());
+    }
     // Key and model changes are already applied immediately
     setKeyChanged(false);
     setModelChanged(false);
     setManualKeyChanged(false);
+    setAgentRouterKeyChanged(false);
     onClose();
   };
 
@@ -941,6 +956,44 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       {sttProvider === provider.id && <Check className="w-3 h-3 text-emerald-400" />}
                     </button>
                   ))}
+                </div>
+              </SettingSection>
+
+              {/* ===== Agent Router Key ===== */}
+              <SettingSection icon={<Zap className="w-4 h-4" />} label="مفتاح Agent Router" defaultOpen={false}>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-gray-500 mb-2">
+                    أدخل مفتاح API الخاص بخدمة Agent Router
+                  </p>
+                  <div className="relative">
+                    <input
+                      type={showAgentRouterKey ? 'text' : 'password'}
+                      value={agentRouterKeyInput}
+                      onChange={(e) => {
+                        setAgentRouterKeyInput(e.target.value);
+                        setAgentRouterKeyChanged(true);
+                      }}
+                      placeholder="أدخل مفتاح Agent Router..."
+                      className="w-full bg-white/5 border border-white/[0.06] rounded-lg px-3 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 pr-3"
+                      dir="ltr"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAgentRouterKey(!showAgentRouterKey)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                    >
+                      {showAgentRouterKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  </div>
+                  {agentRouterKeyInput && (
+                    <div className="flex items-center gap-1.5 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                      <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                      <p className="text-[10px] text-emerald-400">المفتاح محفوظ — اضغط حفظ التغييرات لتفعيله</p>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-600">
+                    يُستخدم للتواصل مع خدمة Agent Router الخارجية
+                  </p>
                 </div>
               </SettingSection>
 

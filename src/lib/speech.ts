@@ -86,13 +86,16 @@ let audioUnlocked = false;
 // Blob URLs to clean up
 let activeBlobUrls: string[] = [];
 
+// Keep a persistent unlocked Audio element to bypass WebView autoplay restrictions
+let unlockedAudioPool: HTMLAudioElement[] = [];
+
 /**
  * Unlock audio playback on mobile WebView.
- * Must be called from a user gesture (touch/click).
- * Creates a silent AudioContext to bypass autoplay restrictions.
+ * MUST be called synchronously from a user gesture (touch/click) - before any await.
+ * Creates a silent AudioContext AND primes a reusable audio element to bypass autoplay restrictions.
  */
 export function unlockAudio(): void {
-  if (audioUnlocked || typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return;
 
   try {
     // Create and resume an AudioContext to unlock audio on mobile
@@ -103,33 +106,59 @@ export function unlockAudio(): void {
       }
     }
     if (audioContext && audioContext.state === 'suspended') {
-      audioContext.resume().then(() => {
-        audioUnlocked = true;
-        console.log('TTS: Audio context unlocked');
-      }).catch(() => {
-        // Fallback: still try to play
-        audioUnlocked = true;
-      });
-    } else if (audioContext) {
-      audioUnlocked = true;
-      console.log('TTS: Audio context already running');
+      audioContext.resume().catch(() => {});
     }
 
-    // Also play a tiny silent audio to fully unlock the audio element
+    // Play a tiny silent audio synchronously from the gesture stack to unlock the audio pipeline.
+    // This is critical on Android WebView: play() must be triggered in the user gesture callstack.
     const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
-    silentAudio.volume = 0.01;
+    silentAudio.volume = 0.001;
     silentAudio.play().then(() => {
       audioUnlocked = true;
       console.log('TTS: Audio element unlocked via silent play');
       silentAudio.pause();
       silentAudio.src = '';
     }).catch(() => {
-      // Still mark as attempted
       audioUnlocked = true;
     });
+
+    // Pre-create a pool of audio elements while in gesture context so they are trusted
+    if (unlockedAudioPool.length === 0) {
+      for (let i = 0; i < 3; i++) {
+        const a = new Audio();
+        a.preload = 'none';
+        unlockedAudioPool.push(a);
+      }
+    }
+
+    audioUnlocked = true;
   } catch (_e) {
     audioUnlocked = true; // Don't keep trying
   }
+}
+
+/**
+ * Get a pre-unlocked audio element from the pool, or create a new one.
+ */
+function getPooledAudio(): HTMLAudioElement {
+  if (unlockedAudioPool.length > 0) {
+    return unlockedAudioPool.pop()!;
+  }
+  return new Audio();
+}
+
+/**
+ * Return an audio element to the pool for reuse.
+ */
+function returnToPool(a: HTMLAudioElement): void {
+  try {
+    a.pause();
+    a.src = '';
+    a.load();
+    if (unlockedAudioPool.length < 5) {
+      unlockedAudioPool.push(a);
+    }
+  } catch (_e) { /* ignore */ }
 }
 
 /**
@@ -205,7 +234,7 @@ export function cancelSpeech(): void {
     try {
       audioElement.pause();
       audioElement.currentTime = 0;
-      audioElement.src = '';
+      returnToPool(audioElement);
     } catch (_e) {
       // ignore
     }
@@ -700,9 +729,10 @@ async function speakWithGoogleTTS(
       return;
     }
 
-    // Create audio element
+    // Create audio element - use pooled (pre-unlocked) element when available
     const isBlobUrl = blobUrl.startsWith('blob:');
-    const audio = new Audio(blobUrl);
+    const audio = getPooledAudio();
+    audio.src = blobUrl;
     audio.preload = 'auto';
     // NOTE: Do NOT set crossOrigin on blob URLs - it will cause CORS failures
     // For direct URLs, crossOrigin may help with some WebView configurations
@@ -723,11 +753,7 @@ async function speakWithGoogleTTS(
       }
     };
 
-    audio.onended = () => {
-      if (thisGeneration !== currentSpeechGeneration) return;
-      console.log('TTS: Audio chunk ended');
-      chunkIndex++;
-      // Clean up the blob URL after use (only for blob: URLs)
+    const cleanupChunk = () => {
       if (isBlobUrl) {
         try {
           URL.revokeObjectURL(blobUrl);
@@ -735,6 +761,14 @@ async function speakWithGoogleTTS(
           if (idx !== -1) activeBlobUrls.splice(idx, 1);
         } catch (_e) { /* ignore */ }
       }
+      returnToPool(audio);
+    };
+
+    audio.onended = () => {
+      if (thisGeneration !== currentSpeechGeneration) return;
+      console.log('TTS: Audio chunk ended');
+      chunkIndex++;
+      cleanupChunk();
       // Small gap between chunks
       setTimeout(playNextChunk, 150);
     };
@@ -742,14 +776,7 @@ async function speakWithGoogleTTS(
     audio.onerror = (e) => {
       console.warn('TTS: Audio play error:', e);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up (only for blob: URLs)
-      if (isBlobUrl) {
-        try {
-          URL.revokeObjectURL(blobUrl);
-          const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
-      }
+      cleanupChunk();
       // Try next chunk or end
       chunkIndex++;
       if (chunkIndex < chunks.length) {
@@ -767,14 +794,7 @@ async function speakWithGoogleTTS(
     } catch (err) {
       console.warn('TTS: play() failed:', err);
       if (thisGeneration !== currentSpeechGeneration) return;
-      // Clean up (only for blob: URLs)
-      if (isBlobUrl) {
-        try {
-          URL.revokeObjectURL(blobUrl);
-          const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
-      }
+      cleanupChunk();
       // Try next chunk
       chunkIndex++;
       if (chunkIndex < chunks.length) {
