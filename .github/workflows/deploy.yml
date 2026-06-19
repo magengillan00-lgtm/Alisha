@@ -32,15 +32,15 @@ jobs:
 
       - name: Create .env.local from secrets
         run: |
-          cat > .env.local << 'EOF'
-          NEXT_PUBLIC_OPENROUTER_KEY=${{ secrets.OPENROUTER_KEY }}
-          NEXT_PUBLIC_NVIDIA_KEY=${{ secrets.NVIDIA_KEY }}
-          NEXT_PUBLIC_ABLITERATION_KEY=${{ secrets.ABLITERATION_KEY }}
-          NEXT_PUBLIC_HUGGINGFACE_KEY=${{ secrets.HUGGINGFACE_KEY }}
-          NEXT_PUBLIC_GEMINI_KEY=${{ secrets.GEMINI_KEY }}
-          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          EOF
+          echo "NEXT_PUBLIC_OPENROUTER_KEY=${{ secrets.OPENROUTER_KEY }}" > .env.local
+          echo "NEXT_PUBLIC_NVIDIA_KEY=${{ secrets.NVIDIA_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_ABLITERATION_KEY=${{ secrets.ABLITERATION_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_HUGGINGFACE_KEY=${{ secrets.HUGGINGFACE_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_GEMINI_KEY=${{ secrets.GEMINI_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.local
+          echo "=== .env.local created (values hidden) ==="
+          sed 's/=.*/=***/' .env.local
 
       - name: Build static site
         run: npx next build

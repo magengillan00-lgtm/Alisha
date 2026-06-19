@@ -59,18 +59,26 @@ export const DEFAULT_PERMANENT_MEMORY: MemoryItem[] = [
 ];
 
 // ✅ مفاتيح API الافتراضية - تُحمّل من متغيرات البيئة (NEXT_PUBLIC_*)
-// هذه المفاتيح للمستخدم الحالي فقط، محفوظة في .env.local
-// يمكن للمستخدم إضافة مفاتيح إضافية أو تغييرها من الإعدادات
+// Next.js يستبدل process.env.NEXT_PUBLIC_* بقيمتها الحرفية وقت البناء
+// لذا نستخدمها مباشرة (ليس عبر متغير وسيط)
 function loadDefaultKeys(): ApiKeyEntry[] {
   const keys: ApiKeyEntry[] = []
-  // ✅ استخدام index signature للوصول الآمن لمتغيرات البيئة
-  const env: Record<string, string | undefined> =
-    (typeof process !== 'undefined' && process.env) ? process.env as Record<string, string | undefined> : {}
-  if (env.NEXT_PUBLIC_OPENROUTER_KEY) keys.push({ provider: 'openrouter', key: env.NEXT_PUBLIC_OPENROUTER_KEY })
-  if (env.NEXT_PUBLIC_NVIDIA_KEY) keys.push({ provider: 'nvidia', key: env.NEXT_PUBLIC_NVIDIA_KEY })
-  if (env.NEXT_PUBLIC_ABLITERATION_KEY) keys.push({ provider: 'abliteration', key: env.NEXT_PUBLIC_ABLITERATION_KEY })
-  if (env.NEXT_PUBLIC_HUGGINGFACE_KEY) keys.push({ provider: 'huggingface', key: env.NEXT_PUBLIC_HUGGINGFACE_KEY })
-  if (env.NEXT_PUBLIC_GEMINI_KEY) keys.push({ provider: 'gemini', key: env.NEXT_PUBLIC_GEMINI_KEY })
+  // ✅ Next.js يُعرّف process.env.NEXT_PUBLIC_* كقيم حرفية في الـ bundle
+  // حتى لو لم يكن process معرفاً في المتصفح
+  try {
+    const OR = process.env.NEXT_PUBLIC_OPENROUTER_KEY
+    const NV = process.env.NEXT_PUBLIC_NVIDIA_KEY
+    const AB = process.env.NEXT_PUBLIC_ABLITERATION_KEY
+    const HF = process.env.NEXT_PUBLIC_HUGGINGFACE_KEY
+    const GM = process.env.NEXT_PUBLIC_GEMINI_KEY
+    if (OR) keys.push({ provider: 'openrouter', key: OR })
+    if (NV) keys.push({ provider: 'nvidia', key: NV })
+    if (AB) keys.push({ provider: 'abliteration', key: AB })
+    if (HF) keys.push({ provider: 'huggingface', key: HF })
+    if (GM) keys.push({ provider: 'gemini', key: GM })
+  } catch {
+    // process غير معرف - تجاهل
+  }
   return keys
 }
 
