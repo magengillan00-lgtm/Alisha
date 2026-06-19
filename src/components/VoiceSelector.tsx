@@ -5,11 +5,16 @@ import { useAppStore } from '@/store/useAppStore'
 import { AVAILABLE_VOICES, getVoicesForLanguage, getVoiceRate, speakText } from '@/lib/speech'
 import { Loader2, Play, Check } from 'lucide-react'
 
-export function VoiceSelector() {
+interface VoiceSelectorProps {
+  currentLanguage?: string; // ✅ tempLanguage من SettingsDialog
+}
+
+export function VoiceSelector({ currentLanguage }: VoiceSelectorProps) {
   const { responseLanguage, selectedVoiceId, setSelectedVoiceId } = useAppStore()
   const [testing, setTesting] = useState<string | null>(null)
 
-  const langCode = responseLanguage.split('-')[0] || 'ar'
+  // ✅ استخدم currentLanguage (tempLanguage) إن وُجد، وإلا responseLanguage
+  const langCode = (currentLanguage || responseLanguage || 'ar').split('-')[0]
   const voices = getVoicesForLanguage(langCode)
 
   // إذا لم يوجد صوت مطابق للغة الحالية، اعرض كل الأصوات

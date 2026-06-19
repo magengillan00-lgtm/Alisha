@@ -926,7 +926,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
               {/* ===== اختيار الصوت ===== */}
               <SettingSection icon={<Mic className="w-4 h-4" />} label="اختيار الصوت" defaultOpen={true}>
-                <VoiceSelector />
+                <VoiceSelector currentLanguage={tempLanguage} />
               </SettingSection>
 
               {/* ===== Voice (read-only indicator, voice is always on) ===== */}
