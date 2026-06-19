@@ -15,7 +15,8 @@ async function fetchWithTimeout(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetchWithTimeout(url, { ...options, signal: controller.signal })
+    // ✅ استخدام fetch الأصلية (وليس fetchWithTimeout) لتجنب recursion
+    const res = await fetch(url, { ...options, signal: controller.signal })
     return res
   } finally {
     clearTimeout(timeoutId)
