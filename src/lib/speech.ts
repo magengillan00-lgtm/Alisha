@@ -16,8 +16,8 @@ interface SpeechRecognitionResultList {
 }
 
 interface SpeechRecognitionResult {
-  readonly length: number;
   readonly isFinal: boolean;
+  readonly length: number;
   item(index: number): SpeechRecognitionAlternative;
   [index: number]: SpeechRecognitionAlternative;
 }
@@ -28,16 +28,17 @@ interface SpeechRecognitionAlternative {
 }
 
 interface SpeechRecognition extends EventTarget {
+  lang: string;
   continuous: boolean;
   interimResults: boolean;
-  lang: string;
+  maxAlternatives: number;
+  start(): void;
+  stop(): void;
+  abort(): void;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
 }
 
 declare global {
@@ -65,25 +66,32 @@ export interface VoiceOption {
   gender: 'male' | 'female';
   language: 'ar' | 'en' | 'ja';
   description: string;
+  rate: number; // سرعة التشغيل (1.0 = عادي، 1.3 = سريع)
 }
 
 export const AVAILABLE_VOICES: VoiceOption[] = [
   // العربية
-  { id: 'ar-default', name: 'صوت عربي ١', gender: 'female', language: 'ar', description: 'صوت أنثوي طبيعي (Google TTS)' },
-  { id: 'ar-fast', name: 'صوت عربي ٢ (سريع)', gender: 'female', language: 'ar', description: 'صوت أنثوي سريع' },
+  { id: 'ar-1', name: 'صوت عربي (أنثوي)', gender: 'female', language: 'ar', description: 'صوت أنثوي طبيعي', rate: 1.0 },
+  { id: 'ar-2', name: 'صوت عربي (سريع)', gender: 'female', language: 'ar', description: 'صوت أنثوي سريع', rate: 1.4 },
   // الإنجليزية
-  { id: 'en-default', name: 'Voice 1 (Female)', gender: 'female', language: 'en', description: 'Natural female voice (Google TTS)' },
-  { id: 'en-male', name: 'Voice 2 (Male)', gender: 'male', language: 'en', description: 'Male voice via Web Speech API' },
-  { id: 'en-fast', name: 'Voice 3 (Fast)', gender: 'female', language: 'en', description: 'Fast female voice' },
+  { id: 'en-1', name: 'English (Female)', gender: 'female', language: 'en', description: 'Natural female voice', rate: 1.0 },
+  { id: 'en-2', name: 'English (Male)', gender: 'male', language: 'en', description: 'Male voice via Web Speech API', rate: 1.0 },
+  { id: 'en-3', name: 'English (Fast)', gender: 'female', language: 'en', description: 'Fast female voice', rate: 1.4 },
   // اليابانية
-  { id: 'ja-default', name: '日本語音声 1', gender: 'female', language: 'ja', description: '自然な女性の声 (Google TTS)' },
-  { id: 'ja-fast', name: '日本語音声 2 (速い)', gender: 'female', language: 'ja', description: '速い女性の声' },
+  { id: 'ja-1', name: '日本語音声 (女性)', gender: 'female', language: 'ja', description: '自然な女性の声', rate: 1.0 },
+  { id: 'ja-2', name: '日本語音声 (速い)', gender: 'female', language: 'ja', description: '速い女性の声', rate: 1.4 },
 ];
 
 // ✅ الحصول على الأصوات المتاحة للغة معينة
 export function getVoicesForLanguage(lang: string): VoiceOption[] {
   const langCode = lang.split('-')[0];
   return AVAILABLE_VOICES.filter(v => v.language === langCode);
+}
+
+// ✅ الحصول على rate للصوت المختار
+export function getVoiceRate(voiceId: string): number {
+  const voice = AVAILABLE_VOICES.find(v => v.id === voiceId);
+  return voice?.rate ?? 1.0;
 }
 
 // TTS language codes for Google Translate
@@ -124,13 +132,11 @@ let unlockedAudioPool: HTMLAudioElement[] = [];
 /**
  * Unlock audio playback on mobile WebView.
  * MUST be called synchronously from a user gesture (touch/click) - before any await.
- * Creates a silent AudioContext AND primes a reusable audio element to bypass autoplay restrictions.
  */
 export function unlockAudio(): void {
   if (typeof window === 'undefined') return;
 
   try {
-    // Create and resume an AudioContext to unlock audio on mobile
     if (!audioContext) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
@@ -141,8 +147,6 @@ export function unlockAudio(): void {
       audioContext.resume().catch(() => {});
     }
 
-    // Play a tiny silent audio synchronously from the gesture stack to unlock the audio pipeline.
-    // This is critical on Android WebView: play() must be triggered in the user gesture callstack.
     const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
     silentAudio.volume = 0.001;
     silentAudio.play().then(() => {
@@ -154,7 +158,6 @@ export function unlockAudio(): void {
       audioUnlocked = true;
     });
 
-    // Pre-create a pool of audio elements while in gesture context so they are trusted
     if (unlockedAudioPool.length === 0) {
       for (let i = 0; i < 3; i++) {
         const a = new Audio();
@@ -165,13 +168,10 @@ export function unlockAudio(): void {
 
     audioUnlocked = true;
   } catch (_e) {
-    audioUnlocked = true; // Don't keep trying
+    audioUnlocked = true;
   }
 }
 
-/**
- * Get a pre-unlocked audio element from the pool, or create a new one.
- */
 function getPooledAudio(): HTMLAudioElement {
   if (unlockedAudioPool.length > 0) {
     return unlockedAudioPool.pop()!;
@@ -180,198 +180,86 @@ function getPooledAudio(): HTMLAudioElement {
 }
 
 /**
- * Return an audio element to the pool for reuse.
- */
-function returnToPool(a: HTMLAudioElement): void {
-  try {
-    a.pause();
-    a.src = '';
-    a.load();
-    if (unlockedAudioPool.length < 5) {
-      unlockedAudioPool.push(a);
-    }
-  } catch (_e) { /* ignore */ }
-}
-
-/**
  * Test if Web Speech Synthesis actually produces audio.
- * On Android WebView, speechSynthesis exists but voices list is empty or speak() is silent.
  */
 export async function testSpeechAPI(): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined' || !window.speechSynthesis) return false;
 
   return new Promise((resolve) => {
     try {
-      const synth = window.speechSynthesis;
-
-      // Wait for voices to load
-      const voices = synth.getVoices();
+      const voices = window.speechSynthesis.getVoices();
       if (voices.length === 0) {
-        // Wait for onvoiceschanged with timeout
-        synth.onvoiceschanged = () => {
-          const v = synth.getVoices();
+        // Wait for voiceschanged
+        const timeout = setTimeout(() => resolve(false), 2000);
+        window.speechSynthesis.onvoiceschanged = () => {
+          clearTimeout(timeout);
+          const v = window.speechSynthesis.getVoices();
           resolve(v.length > 0);
         };
-        setTimeout(() => {
-          const v = synth.getVoices();
-          resolve(v.length > 0);
-        }, 1500);
-        return;
+      } else {
+        resolve(true);
       }
-
-      resolve(true);
-    } catch (_e) {
+    } catch {
       resolve(false);
     }
   });
 }
 
-/**
- * Initialize and determine which TTS method to use.
- */
 export async function initTTS(): Promise<void> {
   if (speechAPITested) return;
   speechAPITested = true;
 
-  const works = await testSpeechAPI();
-  if (works) {
-    speechAPIWorks = true;
-    useWebSpeechAPI = true;
-    console.log('TTS: Using Web Speech API');
-  } else {
-    speechAPIWorks = false;
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
     useWebSpeechAPI = false;
-    console.log('TTS: Web Speech API unavailable, using Google Translate TTS');
+    console.log('TTS: Web Speech API unavailable, using Google TTS proxy');
+    return;
+  }
+
+  // Test if Web Speech API works
+  const works = await testSpeechAPI();
+  speechAPIWorks = works;
+  useWebSpeechAPI = works;
+
+  if (!works) {
+    console.log('TTS: Web Speech API unavailable, using Google TTS proxy');
   }
 }
 
-/**
- * Cancel all ongoing speech immediately.
- */
 export function cancelSpeech(): void {
+  currentSpeechGeneration++;
   stopKeepAlive();
-  currentSpeechGeneration++; // Invalidate any pending callbacks
 
-  if (typeof window === 'undefined') return;
-
-  // Cancel Web Speech API
-  try {
-    window.speechSynthesis.cancel();
-  } catch (_e) {
-    // ignore
-  }
-
-  // Cancel audio element (Google TTS fallback)
   if (audioElement) {
     try {
       audioElement.pause();
       audioElement.currentTime = 0;
-      returnToPool(audioElement);
-    } catch (_e) {
-      // ignore
-    }
+      audioElement.src = '';
+    } catch (_e) { /* ignore */ }
     audioElement = null;
   }
 
-  // Clean up blob URLs
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch (_e) { /* ignore */ }
+  }
+
   cleanupBlobUrls();
 }
 
-/**
- * Clean up blob URLs to free memory.
- */
-function cleanupBlobUrls(): void {
-  for (const url of activeBlobUrls) {
-    try {
-      URL.revokeObjectURL(url);
-    } catch (_e) {
-      // ignore
-    }
-  }
-  activeBlobUrls = [];
-}
-
-/**
- * Warm up TTS - prepare for speaking.
- */
 export function warmupSpeech(): void {
   if (typeof window === 'undefined') return;
-
-  // Unlock audio on first interaction (critical for Android WebView)
-  unlockAudio();
-
-  try {
-    window.speechSynthesis.cancel();
-  } catch (_e) {
-    // ignore
-  }
+  if (!window.speechSynthesis) return;
+  // Just trigger voices to load
+  window.speechSynthesis.getVoices();
 }
 
-// Keep-alive timer to prevent Chrome freeze bug (Chrome pauses TTS after ~15s)
-function startKeepAlive(): void {
-  stopKeepAlive();
-  keepAliveTimer = setInterval(() => {
-    try {
-      if (typeof window !== 'undefined' && window.speechSynthesis.speaking) {
-        window.speechSynthesis.resume();
-      }
-    } catch (_e) {
-      // ignore
-    }
-  }, 4000);
-}
-
-function stopKeepAlive(): void {
-  if (keepAliveTimer) {
-    clearInterval(keepAliveTimer);
-    keepAliveTimer = null;
-  }
-}
+// ============ MAIN speakText FUNCTION ============
 
 /**
- * Find the best available voice for the given language code.
- * Tries preferred voice names first, then falls back to any voice matching the language.
- * Also handles the case where voices have different locale formats (e.g., ja vs ja-JP).
- */
-function findVoice(langCode: string): SpeechSynthesisVoice | null {
-  const synth = window.speechSynthesis;
-  const voices = synth.getVoices();
-  
-  if (voices.length === 0) return null;
-  
-  const preferredVoices = VOICE_NAMES[langCode] || [];
-
-  // First pass: try preferred voice names with exact match
-  for (const voiceName of preferredVoices) {
-    const voice = voices.find(
-      (v) => v.name.toLowerCase().includes(voiceName.toLowerCase())
-    );
-    if (voice) return voice;
-  }
-
-  // Second pass: try any voice that matches the language code
-  // Check both "ja" and "ja-JP" style matches
-  const matchingVoices = voices.filter((v) => {
-    const vLang = v.lang.toLowerCase();
-    return vLang === langCode.toLowerCase() || 
-           vLang.startsWith(langCode.toLowerCase() + '-') ||
-           vLang.startsWith(langCode.toLowerCase() + '_');
-  });
-  
-  if (matchingVoices.length > 0) {
-    // Prefer non-remote voices (local voices work more reliably)
-    const localVoice = matchingVoices.find(v => !v.localService || v.localService);
-    return localVoice || matchingVoices[0];
-  }
-
-  return null;
-}
-
-// ============ MAIN TTS ENTRY POINT ============
-
-/**
- * Speak text using available TTS method.
- * Automatically falls back to Google Translate TTS if Web Speech API doesn't work.
+ * ✅ Speak text with the selected voice.
+ * voiceId: معرف الصوت من AVAILABLE_VOICES (يحدد rate و Web Speech voice)
+ * rate: سرعة التشغيل (1.0 = عادي)
  */
 export async function speakText(
   text: string,
@@ -395,10 +283,10 @@ export async function speakText(
     await initTTS();
   }
 
-  if (useWebSpeechAPI) {
+  if (useWebSpeechAPI && speechAPIWorks) {
     speakWithWebSpeech(text, lang, onEnd, onStart, rate);
   } else {
-    speakWithGoogleTTS(text, lang, onEnd, onStart);
+    speakWithGoogleTTS(text, lang, onEnd, onStart, rate);
   }
 }
 
@@ -414,7 +302,6 @@ function speakWithWebSpeech(
   const thisGeneration = ++currentSpeechGeneration;
   stopKeepAlive();
 
-  // Cancel and wait
   cancelAndWait().then(() => {
     if (thisGeneration !== currentSpeechGeneration) return;
 
@@ -473,55 +360,16 @@ function speakSingle(
       ended = true;
       stopKeepAlive();
       if (generation === currentSpeechGeneration) onEnd();
-      return;
-    }
-    // If Web Speech API fails, switch to Google TTS for this and future calls
-    console.warn('Web Speech API error, switching to Google TTS:', err.error);
-    useWebSpeechAPI = false;
-    ended = true;
-    stopKeepAlive();
-    if (generation === currentSpeechGeneration) {
-      speakWithGoogleTTS(text, lang, onEnd, onStart);
+    } else {
+      // Fall back to Google TTS
+      console.warn('TTS: Web Speech error, falling back to Google TTS:', err.error);
+      ended = true;
+      stopKeepAlive();
+      speakWithGoogleTTS(text, lang, onEnd, onStart, rate);
     }
   };
 
-  try {
-    synth.speak(utterance);
-
-    // Retry if speech doesn't start
-    setTimeout(() => {
-      if (generation !== currentSpeechGeneration) return;
-      if (!started && !ended) {
-        console.log('Web Speech did not start, switching to Google TTS fallback');
-        useWebSpeechAPI = false;
-        ended = true;
-        stopKeepAlive();
-        if (generation === currentSpeechGeneration) {
-          speakWithGoogleTTS(text, lang, onEnd, onStart);
-        }
-      }
-    }, 2000);
-
-    // Safety timeout
-    setTimeout(() => {
-      if (generation !== currentSpeechGeneration) return;
-      if (!started && !ended) {
-        console.warn('Web Speech timeout, using Google TTS');
-        useWebSpeechAPI = false;
-        ended = true;
-        stopKeepAlive();
-        if (generation === currentSpeechGeneration) {
-          speakWithGoogleTTS(text, lang, onEnd, onStart);
-        }
-      }
-    }, 4000);
-  } catch (e) {
-    console.error('Web Speech failed:', e);
-    useWebSpeechAPI = false;
-    if (generation === currentSpeechGeneration) {
-      speakWithGoogleTTS(text, lang, onEnd, onStart);
-    }
-  }
+  synth.speak(utterance);
 }
 
 function speakInChunks(
@@ -532,31 +380,23 @@ function speakInChunks(
   rate: number = 1.0,
   generation: number = 0
 ): void {
-  if (typeof window === 'undefined') return;
-  const synth = window.speechSynthesis;
-
-  const sentences = text.match(/[^.!?。！？\n]+[.!?。！？\n]+/g) || [text];
-  let currentIndex = 0;
+  const chunks = splitTextIntoChunks(text, 180);
+  let chunkIndex = 0;
   let started = false;
-  let totalEnded = false;
+  let ended = false;
 
-  function speakNextChunk(): void {
-    if (generation !== currentSpeechGeneration || totalEnded) return;
-
-    if (currentIndex >= sentences.length) {
-      totalEnded = true;
-      stopKeepAlive();
-      onEnd();
+  function speakNext() {
+    if (generation !== currentSpeechGeneration) return;
+    if (chunkIndex >= chunks.length) {
+      if (!ended) {
+        ended = true;
+        stopKeepAlive();
+        onEnd();
+      }
       return;
     }
 
-    const chunk = sentences[currentIndex].trim();
-    if (!chunk) {
-      currentIndex++;
-      speakNextChunk();
-      return;
-    }
-
+    const chunk = chunks[chunkIndex];
     const utterance = new SpeechSynthesisUtterance(chunk);
     utterance.lang = lang;
     utterance.rate = rate;
@@ -568,7 +408,7 @@ function speakInChunks(
     if (voice) utterance.voice = voice;
 
     utterance.onstart = () => {
-      if (generation !== currentSpeechGeneration || totalEnded) return;
+      if (generation !== currentSpeechGeneration) return;
       if (!started) {
         started = true;
         onStart?.();
@@ -577,62 +417,103 @@ function speakInChunks(
     };
 
     utterance.onend = () => {
-      if (generation !== currentSpeechGeneration || totalEnded) return;
-      currentIndex++;
-      try { synth.resume(); } catch (_e) { /* ignore */ }
-      setTimeout(speakNextChunk, 80);
+      if (generation !== currentSpeechGeneration) return;
+      chunkIndex++;
+      speakNext();
     };
 
     utterance.onerror = (e) => {
-      if (generation !== currentSpeechGeneration || totalEnded) return;
+      if (ended) return;
       const err = e as SpeechSynthesisErrorEvent;
       if (err.error === 'canceled' || err.error === 'interrupted') {
-        totalEnded = true;
+        ended = true;
         stopKeepAlive();
         onEnd();
-        return;
-      }
-      // Switch to Google TTS on error
-      console.warn('Chunk error, switching to Google TTS');
-      useWebSpeechAPI = false;
-      totalEnded = true;
-      stopKeepAlive();
-      const remainingText = sentences.slice(currentIndex).join('');
-      if (generation === currentSpeechGeneration) {
-        speakWithGoogleTTS(remainingText || text, lang, onEnd, onStart);
+      } else {
+        // Fall back to Google TTS for remaining text
+        ended = true;
+        stopKeepAlive();
+        const remainingText = chunks.slice(chunkIndex).join(' ');
+        speakWithGoogleTTS(remainingText || text, lang, onEnd, onStart, rate);
       }
     };
 
-    try {
-      synth.speak(utterance);
-    } catch (e) {
-      console.error('Chunk speak failed:', e);
-      currentIndex++;
-      setTimeout(speakNextChunk, 80);
-    }
+    window.speechSynthesis.speak(utterance);
   }
 
-  setTimeout(speakNextChunk, 100);
+  speakNext();
 }
 
-// ============ GOOGLE TRANSLATE TTS FALLBACK ============
-// Uses Google Translate's text-to-speech endpoint.
-// Audio is fetched as a blob to bypass CORS restrictions in Android WebView.
-// No API key required. Free for moderate use.
+function findVoice(langCode: string): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  const names = VOICE_NAMES[langCode] || [];
+  for (const name of names) {
+    const voice = voices.find(v => v.name.includes(name));
+    if (voice) return voice;
+  }
+
+  const langVoice = voices.find(v => v.lang.startsWith(langCode));
+  return langVoice || null;
+}
+
+function splitTextIntoChunks(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+  let current = '';
+
+  const sentences = text.split(/([.!?。！？\n]+)/);
+
+  for (const part of sentences) {
+    if (current.length + part.length > maxLen && current.length > 0) {
+      chunks.push(current);
+      current = '';
+    }
+    current += part;
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+// ============ HELPERS ============
+
+function stopKeepAlive(): void {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+}
+
+function startKeepAlive(): void {
+  stopKeepAlive();
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  keepAliveTimer = setInterval(() => {
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    } else {
+      stopKeepAlive();
+    }
+  }, 5000);
+}
 
 function cancelAndWait(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof window === 'undefined') { resolve(); return; }
-    try { window.speechSynthesis.cancel(); } catch (_e) { /* ignore */ }
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
     let attempts = 0;
     const check = setInterval(() => {
       attempts++;
-      try {
-        if (!window.speechSynthesis.speaking || attempts > 30) {
-          clearInterval(check);
-          resolve();
-        }
-      } catch (_e) {
+      if (!window.speechSynthesis.speaking || attempts > 30) {
         clearInterval(check);
         resolve();
       }
@@ -640,18 +521,25 @@ function cancelAndWait(): Promise<void> {
   });
 }
 
+function cleanupBlobUrls(): void {
+  for (const url of activeBlobUrls) {
+    try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+  }
+  activeBlobUrls = [];
+}
+
 /**
  * ✅ Fetch audio from TTS proxy (Supabase Edge Function).
- * هذا يتجاوز CORS تماماً لأن الـ proxy على نفس domain (supabase.co)
+ * يمرر rate للـ proxy لتغيير سرعة الصوت.
  */
-async function fetchTTSBlob(text: string, langCode: string): Promise<string | null> {
+async function fetchTTSBlob(text: string, langCode: string, rate: number = 1.0): Promise<string | null> {
   const encodedText = encodeURIComponent(text);
 
-  // ✅ استخدام Supabase Edge Function كـ proxy (يتجاوز CORS)
-  const proxyUrl = `${TTS_PROXY_URL}?text=${encodedText}&lang=${langCode}`;
+  // ✅ استخدام Supabase Edge Function كـ proxy مع rate
+  const proxyUrl = `${TTS_PROXY_URL}?text=${encodedText}&lang=${langCode}&rate=${rate}`;
 
   try {
-    console.log('TTS: Fetching via proxy...');
+    console.log('TTS: Fetching via proxy (rate=' + rate + ')...');
     const response = await fetch(proxyUrl, {
       method: 'GET',
       headers: {
@@ -664,7 +552,7 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
       if (blob.size > 100) {
         const blobUrl = URL.createObjectURL(blob);
         activeBlobUrls.push(blobUrl);
-        console.log('TTS: Audio fetched via proxy, size:', blob.size);
+        console.log('TTS: Audio fetched via proxy, size:', blob.size, 'rate:', rate);
         return blobUrl;
       }
     }
@@ -704,15 +592,15 @@ async function fetchTTSBlob(text: string, langCode: string): Promise<string | nu
 }
 
 /**
- * Speak text using Google Translate TTS (audio element fallback).
- * This works everywhere including Android WebView where Web Speech API doesn't.
- * Uses fetch+blob approach to bypass CORS restrictions.
+ * ✅ Speak text using Google Translate TTS proxy.
+ * يدعم rate parameter لتغيير سرعة الصوت.
  */
 async function speakWithGoogleTTS(
   text: string,
   lang: string,
   onEnd: () => void,
-  onStart?: () => void
+  onStart?: () => void,
+  rate: number = 1.0
 ): Promise<void> {
   const thisGeneration = currentSpeechGeneration;
 
@@ -728,7 +616,7 @@ async function speakWithGoogleTTS(
   cleanupBlobUrls();
 
   // Split text into chunks (Google TTS has ~200 char limit)
-  const chunks = splitTextForGoogleTTS(text, 180);
+  const chunks = splitTextIntoChunks(text, 180);
   if (chunks.length === 0) {
     onEnd();
     return;
@@ -739,7 +627,6 @@ async function speakWithGoogleTTS(
   let started = false;
 
   async function playNextChunk(): Promise<void> {
-    // Check if this generation is still valid
     if (thisGeneration !== currentSpeechGeneration) return;
     if (chunkIndex >= chunks.length) {
       audioElement = null;
@@ -752,8 +639,8 @@ async function speakWithGoogleTTS(
 
     const chunk = chunks[chunkIndex];
 
-    // Fetch audio as blob to bypass CORS
-    const blobUrl = await fetchTTSBlob(chunk, langCode);
+    // ✅ تمرير rate للـ proxy
+    const blobUrl = await fetchTTSBlob(chunk, langCode, rate);
 
     if (thisGeneration !== currentSpeechGeneration) return;
 
@@ -770,17 +657,17 @@ async function speakWithGoogleTTS(
       return;
     }
 
-    // Create audio element - use pooled (pre-unlocked) element when available
     const isBlobUrl = blobUrl.startsWith('blob:');
     const audio = getPooledAudio();
     audio.src = blobUrl;
     audio.preload = 'auto';
-    // NOTE: Do NOT set crossOrigin on blob URLs - it will cause CORS failures
-    // For direct URLs, crossOrigin may help with some WebView configurations
     if (!isBlobUrl) {
       audio.crossOrigin = 'anonymous';
     }
     audioElement = audio;
+
+    // ✅ تطبيق rate على عنصر الصوت (يتحكم في سرعة التشغيل)
+    audio.playbackRate = rate;
 
     audio.onplaying = () => {
       if (thisGeneration !== currentSpeechGeneration) {
@@ -790,7 +677,7 @@ async function speakWithGoogleTTS(
       if (!started) {
         started = true;
         onStart?.();
-        console.log('TTS: Audio started playing');
+        console.log('TTS: Audio started playing (rate:', rate + ')');
       }
     };
 
@@ -799,29 +686,25 @@ async function speakWithGoogleTTS(
         try {
           URL.revokeObjectURL(blobUrl);
           const idx = activeBlobUrls.indexOf(blobUrl);
-          if (idx !== -1) activeBlobUrls.splice(idx, 1);
-        } catch (_e) { /* ignore */ }
+          if (idx >= 0) activeBlobUrls.splice(idx, 1);
+        } catch { /* ignore */ }
       }
-      returnToPool(audio);
     };
 
     audio.onended = () => {
-      if (thisGeneration !== currentSpeechGeneration) return;
-      console.log('TTS: Audio chunk ended');
-      chunkIndex++;
       cleanupChunk();
-      // Small gap between chunks
-      setTimeout(playNextChunk, 150);
+      if (thisGeneration !== currentSpeechGeneration) return;
+      chunkIndex++;
+      playNextChunk();
     };
 
-    audio.onerror = (e) => {
-      console.warn('TTS: Audio play error:', e);
-      if (thisGeneration !== currentSpeechGeneration) return;
+    audio.onerror = () => {
+      console.warn('TTS: Audio playback error');
       cleanupChunk();
-      // Try next chunk or end
+      if (thisGeneration !== currentSpeechGeneration) return;
       chunkIndex++;
       if (chunkIndex < chunks.length) {
-        setTimeout(playNextChunk, 200);
+        setTimeout(playNextChunk, 100);
       } else {
         audioElement = null;
         cleanupBlobUrls();
@@ -831,15 +714,13 @@ async function speakWithGoogleTTS(
 
     try {
       await audio.play();
-      console.log('TTS: play() called successfully');
     } catch (err) {
-      console.warn('TTS: play() failed:', err);
-      if (thisGeneration !== currentSpeechGeneration) return;
+      console.warn('TTS: Audio play() failed:', err);
       cleanupChunk();
-      // Try next chunk
+      if (thisGeneration !== currentSpeechGeneration) return;
       chunkIndex++;
       if (chunkIndex < chunks.length) {
-        setTimeout(playNextChunk, 200);
+        setTimeout(playNextChunk, 100);
       } else {
         audioElement = null;
         cleanupBlobUrls();
@@ -848,101 +729,37 @@ async function speakWithGoogleTTS(
     }
   }
 
-  // Start playing first chunk
   playNextChunk();
 }
 
-/**
- * Split text into chunks suitable for Google TTS.
- * Respects sentence boundaries when possible.
- */
-function splitTextForGoogleTTS(text: string, maxLen: number): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  // Split by sentence terminators
-  const sentences = text.match(/[^.!?。！？\n]+[.!?。！？\n]+/g) || [text];
-
-  let current = '';
-  for (const sentence of sentences) {
-    if ((current + sentence).length > maxLen) {
-      if (current) chunks.push(current.trim());
-      current = sentence;
-    } else {
-      current += sentence;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-
-  // If any chunk is still too long, split by comma or space
-  const finalChunks: string[] = [];
-  for (const chunk of chunks) {
-    if (chunk.length <= maxLen) {
-      finalChunks.push(chunk);
-    } else {
-      // Split by commas or spaces
-      const parts = chunk.split(/[,،、;；]\s*/);
-      let sub = '';
-      for (const part of parts) {
-        if ((sub + part).length > maxLen && sub) {
-          finalChunks.push(sub.trim());
-          sub = part;
-        } else {
-          sub += part;
-        }
-      }
-      if (sub.trim()) finalChunks.push(sub.trim());
-    }
-  }
-
-  return finalChunks.filter(c => c.length > 0);
-}
-
-// ============ SPEECH RECOGNITION ============
+// ============ SPEECH RECOGNITION (STT) ============
 
 export function createSpeechRecognition(
   lang: string,
-  onResult: (transcript: string, isFinal: boolean) => void,
+  onResult: (text: string, isFinal: boolean) => void,
   onError: (error: string) => void,
   onEnd: () => void
 ): SpeechRecognition | null {
   if (typeof window === 'undefined') return null;
 
-  const SpeechRecognitionClass =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
-
-  if (!SpeechRecognitionClass) {
-    console.error('Speech recognition not supported');
-    return null;
-  }
+  const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionClass) return null;
 
   const recognition = new SpeechRecognitionClass();
-  recognition.continuous = false;
+  recognition.lang = SPEECH_LANGUAGES[lang] || lang;
+  recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = lang;
+  recognition.maxAlternatives = 1;
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
-    let finalTranscript = '';
-    let interimTranscript = '';
-
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
-      if (result.isFinal) {
-        finalTranscript += result[0].transcript;
-      } else {
-        interimTranscript += result[0].transcript;
-      }
-    }
-
-    if (finalTranscript) {
-      onResult(finalTranscript, true);
-    } else if (interimTranscript) {
-      onResult(interimTranscript, false);
+      const transcript = result[0].transcript;
+      onResult(transcript, result.isFinal);
     }
   };
 
   recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-    console.error('Speech recognition error:', event.error);
     onError(event.error);
   };
 
@@ -953,30 +770,33 @@ export function createSpeechRecognition(
   return recognition;
 }
 
-// ============ VOICE INITIALIZATION ============
-
 export function initVoices(): Promise<SpeechSynthesisVoice[]> {
   return new Promise((resolve) => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
       resolve([]);
       return;
     }
-    const synth = window.speechSynthesis;
-    const voices = synth.getVoices();
+
+    const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       resolve(voices);
       return;
     }
-    synth.onvoiceschanged = () => {
-      resolve(synth.getVoices());
-    };
-    setTimeout(() => {
-      resolve(synth.getVoices());
-    }, 1500);
-  });
-}
 
-interface SpeechSynthesisErrorEvent {
-  readonly error: string;
-  readonly message?: string;
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve([]);
+      }
+    }, 3000);
+
+    window.speechSynthesis.onvoiceschanged = () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        resolve(window.speechSynthesis.getVoices());
+      }
+    };
+  });
 }

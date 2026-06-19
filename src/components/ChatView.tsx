@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/store/useAppStore';
-import { speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio } from '@/lib/speech';
+import { speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio, getVoiceRate } from '@/lib/speech';
 import { createSTTSession, type STTSession } from '@/lib/stt-providers';
 import { sendMessage } from '@/lib/gemini-client';
 import SettingsDialog from '@/components/SettingsDialog';
@@ -39,6 +39,7 @@ export default function ChatView() {
   const {
     selectedModel,
     responseLanguage,
+    selectedVoiceId,
     avatarState,
     setAvatarState,
     messages,
@@ -298,6 +299,8 @@ export default function ChatView() {
 
         // Always speak the response - voice is always on, no way to disable
         const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
+        // ✅ الحصول على rate من الصوت المختار
+        const voiceRate = getVoiceRate(selectedVoiceId);
         setTimeout(() => {
           speakText(
             responseText,
@@ -309,7 +312,8 @@ export default function ChatView() {
             () => {
               setIsSpeaking(true);
               setAvatarState('speaking');
-            }
+            },
+            voiceRate
           );
         }, 300);
       } catch (err) {
@@ -320,7 +324,7 @@ export default function ChatView() {
         setIsLoading(false);
       }
     },
-    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, isLoading, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, setSelectedModel, buildSystemPrompt]
+    [messages, activeProvider, getActiveApiKey, selectedModel, responseLanguage, selectedVoiceId, isLoading, addMessage, setIsLoading, setError, setAvatarState, permanentMemory, setSelectedModel, buildSystemPrompt]
   );
 
   const handleTextSubmit = useCallback(

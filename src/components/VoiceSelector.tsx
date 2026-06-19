@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { AVAILABLE_VOICES, getVoicesForLanguage, speakText } from '@/lib/speech'
+import { AVAILABLE_VOICES, getVoicesForLanguage, getVoiceRate, speakText } from '@/lib/speech'
 import { Loader2, Play, Check } from 'lucide-react'
 
 export function VoiceSelector() {
@@ -23,12 +23,14 @@ export function VoiceSelector() {
       : 'Hello, this is a voice test'
 
     try {
+      // ✅ استخدام getVoiceRate للحصول على rate الصحيح
+      const rate = getVoiceRate(voiceId)
       await speakText(
         testText,
         langCode,
         () => setTesting(null),
         () => {},
-        voiceId.includes('fast') ? 1.3 : 1.0
+        rate
       )
     } catch {
       setTesting(null)
