@@ -335,9 +335,22 @@ const openrouterProvider: ProviderConfig = {
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
     });
-    if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ OpenRouter API');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMsg = errorData?.error?.message || '';
+      if (res.status === 403 && errorMsg.includes('region')) {
+        throw new Error('هذا الموديل غير متاح في منطقتك. اختر موديلاً آخر.');
+      }
+      throw new Error(errorMsg || 'حدث خطأ أثناء الاتصال بـ OpenRouter API');
+    }
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    // ✅ معالجة reasoning models: إذا كان content فارغ، استخدم reasoning
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    // بعض الموديلات (مثل z-ai) تضع الرد في reasoning
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    throw new Error('لم يتم الحصول على رد من الموديل.');
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {

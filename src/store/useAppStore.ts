@@ -361,7 +361,16 @@ export const useAppStore = create<AppStore>()(
             if (apiKey) {
               try {
                 const data = await listModels(activeProvider, apiKey)
-                set({ models: data.models, appState: 'selectModel' })
+                // ✅ اختيار موديل افتراضي يعمل من السودان
+                // mistralai/mistral-large يعمل ويعطي content (ليس reasoning model)
+                const defaultModel = data.models.find(m => m === 'mistralai/mistral-large')
+                  || data.models.find(m => m.includes('mistral-large'))
+                  || data.models[0]
+                set({
+                  models: data.models,
+                  selectedModel: defaultModel || '',
+                  appState: 'selectModel'
+                })
               } catch (e) {
                 console.error('Failed to load models:', e)
                 set({ appState: 'selectModel' })
