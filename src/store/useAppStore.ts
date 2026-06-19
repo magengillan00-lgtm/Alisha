@@ -12,6 +12,7 @@ import {
   addMessage as sbAddMessage,
   clearMessages as sbClearMessages,
 } from '@/lib/supabase';
+import { listModels } from '@/lib/gemini-client';
 
 export type AppState = 'enterKey' | 'selectModel' | 'chat';
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -359,7 +360,6 @@ export const useAppStore = create<AppStore>()(
             const apiKey = state.apiKeys.find((k) => k.provider === activeProvider)?.key
             if (apiKey) {
               try {
-                const { listModels } = await import('@/lib/gemini-client')
                 const data = await listModels(activeProvider, apiKey)
                 set({ models: data.models, appState: 'selectModel' })
               } catch (e) {
