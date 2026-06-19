@@ -423,15 +423,39 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'alisha-store',
+      version: 2, // ✅ زيادة النسخة لإجبار migration (يحل مشكلة المفاتيح القديمة)
       // ✅ نخزّن فقط المفاتيح والبيانات المحلية، الإعدادات والذاكرة في Supabase
       partialize: (state) => ({
         apiKeys: state.apiKeys,
         agentRouterKey: state.agentRouterKey,
         models: state.models,
       }),
+      // ✅ migration: استبدال المفاتيح القديمة بالمفاتيح الصحيحة الجديدة
+      migrate: (persistedState: unknown, version: number) => {
+        const state = (persistedState as Record<string, unknown>) || {}
+        // إذا كانت النسخة < 2، استبدل المفاتيح بالمفاتيح الافتراضية
+        if (version < 2) {
+          // إزالة المفاتيح القديمة تماماً - ستُستبدل بالـ DEFAULT_API_KEYS
+          state.apiKeys = DEFAULT_API_KEYS
+        }
+        return state
+      },
       onRehydrateStorage: () => (state) => {
         if (state) {
           state._hasHydrated = true
+          // ✅ بعد rehydration، تأكد من وجود المفاتيح الافتراضية
+          // إذا لم توجد مفاتيح، استخدم DEFAULT_API_KEYS
+          if (!state.apiKeys || state.apiKeys.length === 0) {
+            state.apiKeys = DEFAULT_API_KEYS
+          }
+          // ✅ تأكد من وجود مفتاح OpenRouter (المزود الافتراضي)
+          const hasOpenRouter = state.apiKeys?.some(
+            (k: ApiKeyEntry) => k.provider === 'openrouter' && k.key.startsWith('sk-or-v1-')
+          )
+          if (!hasOpenRouter) {
+            // استبدل كلياً بالمفاتيح الافتراضية
+            state.apiKeys = DEFAULT_API_KEYS
+          }
         }
       },
     }
