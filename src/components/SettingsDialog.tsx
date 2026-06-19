@@ -30,6 +30,7 @@ import {
 import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, type SttProvider } from '@/store/useAppStore';
 import { PROVIDER_INFO, listModels, verifyManualKeyModel } from '@/lib/gemini-client';
 import { STT_PROVIDERS } from '@/lib/stt-providers';
+import { VoiceSelector } from '@/components/VoiceSelector';
 
 // Auto-detect API provider from key prefix
 // Order matters: more specific prefixes first
@@ -921,6 +922,11 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <p className="text-[10px] text-gray-600 mt-2">
                   الرد سيكون بلغة الإعدادات حتى لو أرسلت بلغة مختلفة
                 </p>
+              </SettingSection>
+
+              {/* ===== اختيار الصوت ===== */}
+              <SettingSection icon={<Mic className="w-4 h-4" />} label="اختيار الصوت" defaultOpen={true}>
+                <VoiceSelector />
               </SettingSection>
 
               {/* ===== Voice (read-only indicator, voice is always on) ===== */}

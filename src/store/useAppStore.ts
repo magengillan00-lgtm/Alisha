@@ -116,6 +116,9 @@ interface AppStore {
   // Settings (synced to Supabase)
   responseLanguage: ResponseLanguage;
   setResponseLanguage: (lang: ResponseLanguage) => void;
+  // ✅ الصوت المختار للتشغيل الصوتي
+  selectedVoiceId: string;
+  setSelectedVoiceId: (id: string) => void;
   selectedBackground: string;
   setSelectedBackground: (bg: string) => void;
   autoChangeBackground: boolean;
@@ -210,6 +213,12 @@ export const useAppStore = create<AppStore>()(
       responseLanguage: 'ar',
       setResponseLanguage: (responseLanguage) => {
         set({ responseLanguage })
+        get().saveSettingsToSupabase()
+      },
+      // ✅ الصوت الافتراضي
+      selectedVoiceId: 'ar-default',
+      setSelectedVoiceId: (selectedVoiceId) => {
+        set({ selectedVoiceId })
         get().saveSettingsToSupabase()
       },
 
@@ -429,6 +438,7 @@ export const useAppStore = create<AppStore>()(
         apiKeys: state.apiKeys,
         agentRouterKey: state.agentRouterKey,
         models: state.models,
+        selectedVoiceId: state.selectedVoiceId,
       }),
       // ✅ migration: استبدال المفاتيح القديمة بالمفاتيح الصحيحة الجديدة
       migrate: (persistedState: unknown, version: number) => {

@@ -54,6 +54,38 @@ export const SPEECH_LANGUAGES: Record<string, string> = {
   ja: 'ja-JP',
 };
 
+// ✅ TTS proxy URL (Supabase Edge Function - يتجاوز CORS)
+const SUPABASE_URL = 'https://khgvmatuqqgpctimzcoi.supabase.co';
+const TTS_PROXY_URL = `${SUPABASE_URL}/functions/v1/tts-proxy`;
+
+// ✅ خيارات الأصوات المتاحة لكل لغة
+export interface VoiceOption {
+  id: string;
+  name: string;
+  gender: 'male' | 'female';
+  language: 'ar' | 'en' | 'ja';
+  description: string;
+}
+
+export const AVAILABLE_VOICES: VoiceOption[] = [
+  // العربية
+  { id: 'ar-default', name: 'صوت عربي ١', gender: 'female', language: 'ar', description: 'صوت أنثوي طبيعي (Google TTS)' },
+  { id: 'ar-fast', name: 'صوت عربي ٢ (سريع)', gender: 'female', language: 'ar', description: 'صوت أنثوي سريع' },
+  // الإنجليزية
+  { id: 'en-default', name: 'Voice 1 (Female)', gender: 'female', language: 'en', description: 'Natural female voice (Google TTS)' },
+  { id: 'en-male', name: 'Voice 2 (Male)', gender: 'male', language: 'en', description: 'Male voice via Web Speech API' },
+  { id: 'en-fast', name: 'Voice 3 (Fast)', gender: 'female', language: 'en', description: 'Fast female voice' },
+  // اليابانية
+  { id: 'ja-default', name: '日本語音声 1', gender: 'female', language: 'ja', description: '自然な女性の声 (Google TTS)' },
+  { id: 'ja-fast', name: '日本語音声 2 (速い)', gender: 'female', language: 'ja', description: '速い女性の声' },
+];
+
+// ✅ الحصول على الأصوات المتاحة للغة معينة
+export function getVoicesForLanguage(lang: string): VoiceOption[] {
+  const langCode = lang.split('-')[0];
+  return AVAILABLE_VOICES.filter(v => v.language === langCode);
+}
+
 // TTS language codes for Google Translate
 const GTTS_LANG_MAP: Record<string, string> = {
   ar: 'ar',
@@ -609,73 +641,63 @@ function cancelAndWait(): Promise<void> {
 }
 
 /**
- * Fetch audio from Google TTS as a blob, then play via local blob URL.
- * This bypasses CORS restrictions in Android WebView.
+ * ✅ Fetch audio from TTS proxy (Supabase Edge Function).
+ * هذا يتجاوز CORS تماماً لأن الـ proxy على نفس domain (supabase.co)
  */
 async function fetchTTSBlob(text: string, langCode: string): Promise<string | null> {
   const encodedText = encodeURIComponent(text);
 
-  // Try multiple Google TTS URL variants for maximum compatibility
-  // Added more client variants and tw-ob variant which is more reliable
+  // ✅ استخدام Supabase Edge Function كـ proxy (يتجاوز CORS)
+  const proxyUrl = `${TTS_PROXY_URL}?text=${encodedText}&lang=${langCode}`;
+
+  try {
+    console.log('TTS: Fetching via proxy...');
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'audio/mpeg',
+      },
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      if (blob.size > 100) {
+        const blobUrl = URL.createObjectURL(blob);
+        activeBlobUrls.push(blobUrl);
+        console.log('TTS: Audio fetched via proxy, size:', blob.size);
+        return blobUrl;
+      }
+    }
+    console.warn('TTS: Proxy returned status:', response.status);
+  } catch (err) {
+    console.warn('TTS: Proxy fetch error:', err);
+  }
+
+  // Fallback: محاولة مباشرة (قد تعمل في بعض المتصفحات)
+  console.log('TTS: Trying direct Google TTS...');
   const urls = [
     `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
-    `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
-    `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=ob&q=${encodedText}`,
     `https://translate.googleapis.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`,
-    `https://translate.googleapis.com/g_tts?ie=UTF-8&tl=${langCode}&client=at&q=${encodedText}`,
   ];
 
   for (const url of urls) {
     try {
-      console.log('TTS: Fetching audio from:', url.substring(0, 80) + '...');
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Accept': 'audio/mpeg,audio/mp3,*/*',
-          'User-Agent': 'Mozilla/5.0',
-        },
+        headers: { 'Accept': 'audio/mpeg' },
       });
-
-      if (!response.ok) {
-        console.warn('TTS: Fetch failed with status:', response.status);
-        continue;
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size > 100) {
+          const blobUrl = URL.createObjectURL(blob);
+          activeBlobUrls.push(blobUrl);
+          console.log('TTS: Audio fetched directly, size:', blob.size);
+          return blobUrl;
+        }
       }
-
-      const blob = await response.blob();
-      if (blob.size < 100) {
-        console.warn('TTS: Response too small, likely error:', blob.size);
-        continue;
-      }
-
-      const blobUrl = URL.createObjectURL(blob);
-      activeBlobUrls.push(blobUrl);
-      console.log('TTS: Audio fetched successfully, size:', blob.size);
-      return blobUrl;
-    } catch (err) {
-      console.warn('TTS: Fetch error for URL variant:', err);
+    } catch {
+      // continue
     }
-  }
-
-  // Last resort: try direct audio element (works in some WebView configurations)
-  // This doesn't use fetch so avoids CORS, but may not work everywhere
-  console.log('TTS: Trying direct audio URL playback...');
-  try {
-    const directUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${langCode}&client=tw-ob&q=${encodedText}`;
-    const audio = new Audio();
-    audio.preload = 'auto';
-    audio.src = directUrl;
-    // Test if it can play
-    const canPlay = await new Promise<boolean>((resolve) => {
-      audio.oncanplaythrough = () => resolve(true);
-      audio.onerror = () => resolve(false);
-      setTimeout(() => resolve(false), 3000);
-    });
-    if (canPlay) {
-      console.log('TTS: Direct audio URL works!');
-      return directUrl; // Return URL directly, not a blob URL
-    }
-  } catch (_e) {
-    // ignore
   }
 
   return null;
