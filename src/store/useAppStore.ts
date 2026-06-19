@@ -63,8 +63,9 @@ export const DEFAULT_PERMANENT_MEMORY: MemoryItem[] = [
 // يمكن للمستخدم إضافة مفاتيح إضافية أو تغييرها من الإعدادات
 function loadDefaultKeys(): ApiKeyEntry[] {
   const keys: ApiKeyEntry[] = []
-  // نقرأ من متغيرات البيئة (متاحة في المتصفح لأنها NEXT_PUBLIC_)
-  const env = (typeof process !== 'undefined' && process.env) ? process.env : {}
+  // ✅ استخدام index signature للوصول الآمن لمتغيرات البيئة
+  const env: Record<string, string | undefined> =
+    (typeof process !== 'undefined' && process.env) ? process.env as Record<string, string | undefined> : {}
   if (env.NEXT_PUBLIC_OPENROUTER_KEY) keys.push({ provider: 'openrouter', key: env.NEXT_PUBLIC_OPENROUTER_KEY })
   if (env.NEXT_PUBLIC_NVIDIA_KEY) keys.push({ provider: 'nvidia', key: env.NEXT_PUBLIC_NVIDIA_KEY })
   if (env.NEXT_PUBLIC_ABLITERATION_KEY) keys.push({ provider: 'abliteration', key: env.NEXT_PUBLIC_ABLITERATION_KEY })
