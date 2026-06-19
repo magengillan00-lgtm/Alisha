@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const repo = "Alisha";
-
 const nextConfig: NextConfig = {
   output: "export",
   // ✅ إزالة ignoreBuildErrors لكشف الأخطاء الحقيقية
@@ -9,9 +7,8 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  // GitHub Pages serves at https://<user>.github.io/<repo>/
-  basePath: `/${repo}`,
-  assetPrefix: `/${repo}/`,
+  // ✅ النطاق المخصص alisha.dpdns.org لا يحتاج basePath
+  // إذا أردت النشر على github.io/Alisha/ أضف: basePath: "/Alisha"
   trailingSlash: true,
 };
 
