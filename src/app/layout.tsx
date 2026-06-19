@@ -1,0 +1,64 @@
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// ✅ إصلاح: userScalable: true (WCAG 1.4.4)
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: "cover",
+};
+
+export const metadata: Metadata = {
+  title: "Alisha - مساعد AI الذكي",
+  description: "محادثة ذكية مع أفاتار Live2D تفاعلي - Interactive AI Chat with Live2D Avatar",
+  // ✅ favicon محلي بدلاً من CDN خارجي
+  icons: {
+    icon: "/settings-icon.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+      >
+        {children}
+        <Toaster />
+
+        {/* Load Live2D SDK from CDN */}
+        <Script
+          src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.10/browser/pixi.min.js"
+          strategy="beforeInteractive"
+        />
+        <Script
+          src="/live2d/live2dcubismcore.min.js"
+          strategy="beforeInteractive"
+        />
+        <Script
+          src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"
+          strategy="beforeInteractive"
+        />
+      </body>
+    </html>
+  );
+}

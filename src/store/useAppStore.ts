@@ -1,0 +1,421 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import {
+  fetchUserSettings,
+  upsertUserSettings,
+  fetchMemory,
+  addMemoryItem,
+  updateMemoryItem,
+  deleteMemoryItem,
+  replaceAllMemory,
+  fetchMessages,
+  addMessage as sbAddMessage,
+  clearMessages as sbClearMessages,
+} from '@/lib/supabase';
+
+export type AppState = 'enterKey' | 'selectModel' | 'chat';
+export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type ResponseLanguage = 'ar' | 'en' | 'ja';
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface MemoryItem {
+  id: string;
+  content: string;
+  order: number;
+  // ✅ DB id (number) لعمليات Supabase
+  dbId?: number;
+}
+
+// Supported API providers
+export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'together' | 'openrouter' | 'cohere' | 'mistral' | 'abliteration' | 'agentrouter';
+
+// Supported STT providers
+export type SttProvider = 'assemblyai' | 'webspeech';
+
+export interface ApiKeyEntry {
+  provider: ApiProvider;
+  key: string;
+}
+
+// ✅ الذاكرة الافتراضية - تُستخدم فقط قبل تسجيل الدخول
+// بعد الدخول تُحمّل من Supabase
+export const DEFAULT_PERMANENT_MEMORY: MemoryItem[] = [
+  {
+    id: 'mem-default-1',
+    content: 'AR: اسم المستخدم | EN/JP: User name',
+    order: 1,
+  },
+  {
+    id: 'mem-default-2',
+    content: 'أنت أفاتار ذكي اسمك اليشيا (Alisha). أنت لست مجرد مساعد، أنت اليشيا - شخصية فريدة بذاتها.',
+    order: 2,
+  },
+];
+
+// ✅ مفاتيح API الافتراضية - تُحمّل من متغيرات البيئة (NEXT_PUBLIC_*)
+// هذه المفاتيح للمستخدم الحالي فقط، محفوظة في .env.local
+// يمكن للمستخدم إضافة مفاتيح إضافية أو تغييرها من الإعدادات
+function loadDefaultKeys(): ApiKeyEntry[] {
+  const keys: ApiKeyEntry[] = []
+  // نقرأ من متغيرات البيئة (متاحة في المتصفح لأنها NEXT_PUBLIC_)
+  const env = (typeof process !== 'undefined' && process.env) ? process.env : {}
+  if (env.NEXT_PUBLIC_OPENROUTER_KEY) keys.push({ provider: 'openrouter', key: env.NEXT_PUBLIC_OPENROUTER_KEY })
+  if (env.NEXT_PUBLIC_NVIDIA_KEY) keys.push({ provider: 'nvidia', key: env.NEXT_PUBLIC_NVIDIA_KEY })
+  if (env.NEXT_PUBLIC_ABLITERATION_KEY) keys.push({ provider: 'abliteration', key: env.NEXT_PUBLIC_ABLITERATION_KEY })
+  if (env.NEXT_PUBLIC_HUGGINGFACE_KEY) keys.push({ provider: 'huggingface', key: env.NEXT_PUBLIC_HUGGINGFACE_KEY })
+  if (env.NEXT_PUBLIC_GEMINI_KEY) keys.push({ provider: 'gemini', key: env.NEXT_PUBLIC_GEMINI_KEY })
+  return keys
+}
+
+export const DEFAULT_API_KEYS: ApiKeyEntry[] = loadDefaultKeys()
+
+interface AppStore {
+  // App flow
+  appState: AppState;
+  setAppState: (state: AppState) => void;
+
+  // API Keys - remain in localStorage (user's secrets)
+  apiKeys: ApiKeyEntry[];
+  setApiKeys: (keys: ApiKeyEntry[]) => void;
+  addApiKey: (entry: ApiKeyEntry) => void;
+  getApiKey: (provider: ApiProvider) => string;
+  activeProvider: ApiProvider;
+  setActiveProvider: (provider: ApiProvider) => void;
+
+  // Models
+  models: string[];
+  setModels: (models: string[]) => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+
+  // Chat (in-memory only, synced to Supabase)
+  messages: Message[];
+  addMessage: (msg: Message) => void;
+  clearMessages: () => Promise<void>;
+
+  // Avatar state
+  avatarState: AvatarState;
+  setAvatarState: (state: AvatarState) => void;
+
+  // Settings (synced to Supabase)
+  responseLanguage: ResponseLanguage;
+  setResponseLanguage: (lang: ResponseLanguage) => void;
+  selectedBackground: string;
+  setSelectedBackground: (bg: string) => void;
+  autoChangeBackground: boolean;
+  setAutoChangeBackground: (auto: boolean) => void;
+  backgroundChangeInterval: number;
+  setBackgroundChangeInterval: (minutes: number) => void;
+  lastBackgroundChange: number;
+  setLastBackgroundChange: (ts: number) => void;
+
+  // Permanent Memory (synced to Supabase)
+  permanentMemory: MemoryItem[];
+  setPermanentMemory: (items: MemoryItem[]) => void;
+  addPermanentMemory: (content: string) => Promise<void>;
+  removePermanentMemory: (id: string) => Promise<void>;
+  updatePermanentMemory: (id: string, content: string) => Promise<void>;
+  saveAllMemory: (items: MemoryItem[]) => Promise<void>;
+
+  // Sync from Supabase
+  syncFromSupabase: () => Promise<void>;
+  saveSettingsToSupabase: () => Promise<void>;
+
+  // Loading
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+
+  // STT Provider
+  sttProvider: SttProvider;
+  setSttProvider: (provider: SttProvider) => void;
+
+  // Agent Router API Key
+  agentRouterKey: string;
+  setAgentRouterKey: (key: string) => void;
+
+  // Error
+  error: string | null;
+  setError: (error: string | null) => void;
+
+  // Hydration flag
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
+}
+
+export const useAppStore = create<AppStore>()(
+  persist(
+    (set, get) => ({
+      appState: 'enterKey',
+      setAppState: (appState) => set({ appState }),
+
+      // ✅ API keys - تبدأ بالمفاتيح الافتراضية المُدمجة
+      apiKeys: DEFAULT_API_KEYS,
+      setApiKeys: (apiKeys) => set({ apiKeys }),
+      addApiKey: (entry) =>
+        set((state) => {
+          const existing = state.apiKeys.filter((k) => k.provider !== entry.provider);
+          return { apiKeys: [...existing, entry] };
+        }),
+      getApiKey: (provider) => {
+        const entry = get().apiKeys.find((k) => k.provider === provider);
+        return entry?.key || '';
+      },
+      // ✅ OpenRouter ك مزود افتراضي (يعمل من السودان، 340 موديل)
+      activeProvider: 'openrouter',
+      setActiveProvider: (activeProvider) => {
+        set({ activeProvider })
+        get().saveSettingsToSupabase()
+      },
+
+      models: [],
+      setModels: (models) => set({ models }),
+      selectedModel: '',
+      setSelectedModel: (selectedModel) => {
+        set({ selectedModel })
+        get().saveSettingsToSupabase()
+      },
+
+      messages: [],
+      addMessage: (message) => {
+        set((state) => ({ messages: [...state.messages, message] }))
+        // ✅ مزامنة مع Supabase (في الخلفية)
+        sbAddMessage(message.role, message.content).catch((e) =>
+          console.error('Failed to sync message:', e)
+        )
+      },
+      clearMessages: async () => {
+        set({ messages: [] })
+        await sbClearMessages()
+      },
+
+      avatarState: 'idle',
+      setAvatarState: (avatarState) => set({ avatarState }),
+
+      responseLanguage: 'ar',
+      setResponseLanguage: (responseLanguage) => {
+        set({ responseLanguage })
+        get().saveSettingsToSupabase()
+      },
+
+      selectedBackground: '',
+      setSelectedBackground: (selectedBackground) => {
+        set({ selectedBackground })
+        get().saveSettingsToSupabase()
+      },
+      autoChangeBackground: false,
+      setAutoChangeBackground: (autoChangeBackground) => {
+        set({ autoChangeBackground })
+        get().saveSettingsToSupabase()
+      },
+      backgroundChangeInterval: 30,
+      setBackgroundChangeInterval: (backgroundChangeInterval) => {
+        set({ backgroundChangeInterval })
+        get().saveSettingsToSupabase()
+      },
+      lastBackgroundChange: 0,
+      setLastBackgroundChange: (lastBackgroundChange) => set({ lastBackgroundChange }),
+
+      permanentMemory: DEFAULT_PERMANENT_MEMORY,
+      setPermanentMemory: (permanentMemory) => set({ permanentMemory }),
+      addPermanentMemory: async (content) => {
+        const state = get()
+        const maxOrder = state.permanentMemory.reduce((max, m) => Math.max(max, m.order), 0)
+        const newItem: MemoryItem = {
+          id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          content,
+          order: maxOrder + 1,
+        }
+        set({ permanentMemory: [...state.permanentMemory, newItem] })
+
+        // ✅ مزامنة مع Supabase
+        try {
+          const dbItem = await addMemoryItem(content, newItem.order)
+          if (dbItem) {
+            set((s) => ({
+              permanentMemory: s.permanentMemory.map((m) =>
+                m.id === newItem.id ? { ...m, dbId: dbItem.id } : m
+              )
+            }))
+          }
+        } catch (e) {
+          console.error('Failed to add memory to Supabase:', e)
+        }
+      },
+      removePermanentMemory: async (id) => {
+        const state = get()
+        const item = state.permanentMemory.find((m) => m.id === id)
+        set({
+          permanentMemory: state.permanentMemory
+            .filter((m) => m.id !== id)
+            .map((m, i) => ({ ...m, order: i + 1 })),
+        })
+
+        // ✅ حذف من Supabase
+        if (item?.dbId) {
+          try {
+            await deleteMemoryItem(item.dbId)
+          } catch (e) {
+            console.error('Failed to delete memory from Supabase:', e)
+          }
+        }
+      },
+      updatePermanentMemory: async (id, content) => {
+        const state = get()
+        set({
+          permanentMemory: state.permanentMemory.map((m) =>
+            m.id === id ? { ...m, content } : m
+          ),
+        })
+
+        // ✅ تحديث في Supabase
+        const item = state.permanentMemory.find((m) => m.id === id)
+        if (item?.dbId) {
+          try {
+            await updateMemoryItem(item.dbId, content)
+          } catch (e) {
+            console.error('Failed to update memory in Supabase:', e)
+          }
+        }
+      },
+      saveAllMemory: async (items) => {
+        set({ permanentMemory: items })
+        try {
+          await replaceAllMemory(
+            items.map((i) => ({ content: i.content, sort_order: i.order }))
+          )
+        } catch (e) {
+          console.error('Failed to save memory to Supabase:', e)
+        }
+      },
+
+      // ✅ تحميل البيانات من Supabase
+      syncFromSupabase: async () => {
+        try {
+          const [settings, memory, messages] = await Promise.all([
+            fetchUserSettings(),
+            fetchMemory(),
+            fetchMessages(),
+          ])
+
+          if (settings) {
+            set({
+              responseLanguage: settings.response_language,
+              selectedBackground: settings.selected_background,
+              autoChangeBackground: settings.auto_change_bg,
+              backgroundChangeInterval: settings.bg_interval_minutes,
+              sttProvider: settings.stt_provider,
+              activeProvider: settings.active_provider as ApiProvider,
+              selectedModel: settings.selected_model,
+            })
+          }
+
+          if (memory.length > 0) {
+            set({
+              permanentMemory: memory.map((m) => ({
+                id: `mem-${m.id}`,
+                dbId: m.id,
+                content: m.content,
+                order: m.sort_order,
+              })),
+            })
+          }
+
+          if (messages.length > 0) {
+            set({
+              messages: messages.map((m) => ({
+                id: `msg-${m.id}`,
+                role: m.role,
+                content: m.content,
+                timestamp: new Date(m.created_at).getTime(),
+              })),
+            })
+          }
+
+          // ✅ تحديد appState بناءً على البيانات:
+          // - المفاتيح الافتراضية موجودة دائماً، لذا نتجاوز enterKey
+          // - إذا وُجد موديل محفوظ → chat
+          // - إذا لم يوجد موديل → selectModel
+          const state = get()
+          if (state.apiKeys.length > 0 && state.selectedModel) {
+            set({ appState: 'chat' })
+          } else if (state.apiKeys.length > 0) {
+            // ✅ حمّل موديلات المزود النشط تلقائياً
+            const activeProvider = state.activeProvider
+            const apiKey = state.apiKeys.find((k) => k.provider === activeProvider)?.key
+            if (apiKey) {
+              try {
+                const { listModels } = await import('@/lib/gemini-client')
+                const data = await listModels(activeProvider, apiKey)
+                set({ models: data.models, appState: 'selectModel' })
+              } catch (e) {
+                console.error('Failed to load models:', e)
+                set({ appState: 'selectModel' })
+              }
+            } else {
+              set({ appState: 'selectModel' })
+            }
+          } else {
+            set({ appState: 'enterKey' })
+          }
+        } catch (e) {
+          console.error('Failed to sync from Supabase:', e)
+        }
+      },
+
+      saveSettingsToSupabase: async () => {
+        const state = get()
+        try {
+          await upsertUserSettings({
+            response_language: state.responseLanguage,
+            selected_background: state.selectedBackground,
+            auto_change_bg: state.autoChangeBackground,
+            bg_interval_minutes: state.backgroundChangeInterval,
+            stt_provider: state.sttProvider,
+            active_provider: state.activeProvider,
+            selected_model: state.selectedModel,
+          })
+        } catch (e) {
+          console.error('Failed to save settings to Supabase:', e)
+        }
+      },
+
+      isLoading: false,
+      setIsLoading: (isLoading) => set({ isLoading }),
+
+      sttProvider: 'webspeech',
+      setSttProvider: (sttProvider) => {
+        set({ sttProvider })
+        get().saveSettingsToSupabase()
+      },
+
+      agentRouterKey: '',
+      setAgentRouterKey: (agentRouterKey) => set({ agentRouterKey }),
+
+      error: null,
+      setError: (error) => set({ error }),
+
+      _hasHydrated: false,
+      setHasHydrated: (_hasHydrated) => set({ _hasHydrated }),
+    }),
+    {
+      name: 'alisha-store',
+      // ✅ نخزّن فقط المفاتيح والبيانات المحلية، الإعدادات والذاكرة في Supabase
+      partialize: (state) => ({
+        apiKeys: state.apiKeys,
+        agentRouterKey: state.agentRouterKey,
+        models: state.models,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state._hasHydrated = true
+        }
+      },
+    }
+  )
+);
