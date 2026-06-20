@@ -14,6 +14,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { speakText, SPEECH_LANGUAGES, initVoices, warmupSpeech, cancelSpeech, initTTS, unlockAudio, getVoiceRate } from '@/lib/speech';
 import { createSTTSession, type STTSession } from '@/lib/stt-providers';
 import { sendMessage } from '@/lib/gemini-client';
+import { getAvatarModelPath } from '@/components/AvatarSelector';
 import SettingsDialog from '@/components/SettingsDialog';
 
 // Background IDs for auto-rotation
@@ -40,6 +41,7 @@ export default function ChatView() {
     selectedModel,
     responseLanguage,
     selectedVoiceId,
+    selectedAvatar,
     avatarState,
     setAvatarState,
     messages,
@@ -140,7 +142,8 @@ export default function ChatView() {
     }
   }, [error, setError]);
 
-  const MODEL_PATH = '/live2d/kei_en/kei_basic_free/runtime/kei_basic_free.model3.json';
+  // ✅ مسار النموذج يعتمد على الأفاتار المختار
+  const MODEL_PATH = getAvatarModelPath(selectedAvatar);
 
   // Get the active API key
   const getActiveApiKey = useCallback(() => {

@@ -31,6 +31,7 @@ import { useAppStore, type ResponseLanguage, type MemoryItem, type ApiProvider, 
 import { PROVIDER_INFO, listModels, verifyManualKeyModel } from '@/lib/gemini-client';
 import { STT_PROVIDERS } from '@/lib/stt-providers';
 import { VoiceSelector } from '@/components/VoiceSelector';
+import { AvatarSelector } from '@/components/AvatarSelector';
 
 // Auto-detect API provider from key prefix
 // Order matters: more specific prefixes first
@@ -1017,6 +1018,11 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     </div>
                   )}
                 </div>
+              </SettingSection>
+
+              {/* ===== اختيار الأفاتار ===== */}
+              <SettingSection icon={<Sparkles className="w-4 h-4" />} label="اختيار الأفاتار" defaultOpen={false}>
+                <AvatarSelector />
               </SettingSection>
 
               {/* ===== Permanent Memory ===== */}

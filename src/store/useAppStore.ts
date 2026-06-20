@@ -136,6 +136,9 @@ interface AppStore {
   // ✅ الصوت المختار للتشغيل الصوتي
   selectedVoiceId: string;
   setSelectedVoiceId: (id: string) => void;
+  // ✅ الأفاتار المختار
+  selectedAvatar: string;
+  setSelectedAvatar: (id: string) => void;
   selectedBackground: string;
   setSelectedBackground: (bg: string) => void;
   autoChangeBackground: boolean;
@@ -236,6 +239,12 @@ export const useAppStore = create<AppStore>()(
       selectedVoiceId: 'ar-default',
       setSelectedVoiceId: (selectedVoiceId) => {
         set({ selectedVoiceId })
+        get().saveSettingsToSupabase()
+      },
+      // ✅ الأفاتار الافتراضي
+      selectedAvatar: 'kei',
+      setSelectedAvatar: (selectedAvatar) => {
+        set({ selectedAvatar })
         get().saveSettingsToSupabase()
       },
 
@@ -469,6 +478,7 @@ export const useAppStore = create<AppStore>()(
         agentRouterKey: state.agentRouterKey,
         models: state.models,
         selectedVoiceId: state.selectedVoiceId,
+        selectedAvatar: state.selectedAvatar,
       }),
       // ✅ migration: استبدال المفاتيح القديمة بالمفاتيح الصحيحة الجديدة
       migrate: (persistedState: unknown, version: number) => {
