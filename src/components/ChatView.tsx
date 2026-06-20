@@ -426,9 +426,9 @@ export default function ChatView() {
 
       {/* Main content - Full screen avatar */}
       <div className="flex-1 relative z-10 overflow-hidden min-h-0">
-        {/* Avatar - Center stage */}
-        <div className="absolute inset-0 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-[500px] max-h-full aspect-[3/4]">
+        {/* Avatar - Center stage - يملأ الشاشة بالكامل */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="relative w-full h-full">
             <Live2DViewer avatarState={avatarState} modelPath={MODEL_PATH} />
           </div>
         </div>
