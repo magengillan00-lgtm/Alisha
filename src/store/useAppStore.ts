@@ -462,7 +462,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'alisha-store',
-      version: 2, // ✅ زيادة النسخة لإجبار migration (يحل مشكلة المفاتيح القديمة)
+      version: 3, // ✅ نسخة 3: إضافة Z.ai key + إعادة تحميل كل المفاتيح
       // ✅ نخزّن فقط المفاتيح والبيانات المحلية، الإعدادات والذاكرة في Supabase
       partialize: (state) => ({
         apiKeys: state.apiKeys,
@@ -473,9 +473,8 @@ export const useAppStore = create<AppStore>()(
       // ✅ migration: استبدال المفاتيح القديمة بالمفاتيح الصحيحة الجديدة
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState as Record<string, unknown>) || {}
-        // إذا كانت النسخة < 2، استبدل المفاتيح بالمفاتيح الافتراضية
-        if (version < 2) {
-          // إزالة المفاتيح القديمة تماماً - ستُستبدل بالـ DEFAULT_API_KEYS
+        // نسخة < 3: استبدل المفاتيح بالمفاتيح الافتراضية (تشمل Z.ai)
+        if (version < 3) {
           state.apiKeys = DEFAULT_API_KEYS
         }
         return state
@@ -483,18 +482,18 @@ export const useAppStore = create<AppStore>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           state._hasHydrated = true
-          // ✅ بعد rehydration، تأكد من وجود المفاتيح الافتراضية
-          // إذا لم توجد مفاتيح، استخدم DEFAULT_API_KEYS
+          // ✅ بعد rehydration، تأكد من وجود كل المفاتيح الافتراضية
           if (!state.apiKeys || state.apiKeys.length === 0) {
             state.apiKeys = DEFAULT_API_KEYS
-          }
-          // ✅ تأكد من وجود مفتاح OpenRouter (المزود الافتراضي)
-          const hasOpenRouter = state.apiKeys?.some(
-            (k: ApiKeyEntry) => k.provider === 'openrouter' && k.key.startsWith('sk-or-v1-')
-          )
-          if (!hasOpenRouter) {
-            // استبدل كلياً بالمفاتيح الافتراضية
-            state.apiKeys = DEFAULT_API_KEYS
+          } else {
+            // ✅ تحقق من وجود كل المزودين المطلوبين
+            const apiKeys = state.apiKeys as ApiKeyEntry[]
+            const hasOpenRouter = apiKeys.some(k => k.provider === 'openrouter' && k.key.startsWith('sk-or-v1-'))
+            const hasZai = apiKeys.some(k => k.provider === 'zai')
+            // إذا نقص أي مزود أساسي، استبدل كلياً
+            if (!hasOpenRouter || !hasZai) {
+              state.apiKeys = DEFAULT_API_KEYS
+            }
           }
         }
       },
