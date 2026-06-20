@@ -115,6 +115,10 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
         autoStart: true,
         resizeTo: canvas.parentElement || undefined,
         backgroundAlpha: 0,
+        // ✅ تقليل تعقيد shader لتجنب خطأ checkMaxIfStatementsInShader
+        antialias: false,
+        forceFXAA: false,
+        powerPreference: 'low-power',
       });
       appRef.current = app;
 
@@ -141,7 +145,13 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       setLoadError(null);
     } catch (err) {
       console.error('Live2D init error:', err);
-      setLoadError('Failed to load Live2D model');
+      const errMsg = err instanceof Error ? err.message : 'Failed to load Live2D model';
+      // ✅ رسالة خطأ أوضح للمستخدم
+      if (errMsg.includes('checkMaxIfStatementsInShader') || errMsg.includes('Invalid value')) {
+        setLoadError('هذا الأفاتار معقد جداً للمتصفح. جرب أفاتاراً آخر.');
+      } else {
+        setLoadError('فشل تحميل الأفاتار. تأكد من اتصال الإنترنت.');
+      }
     }
   }, [modelPath]);
 
