@@ -69,13 +69,18 @@ export function getAvatarModelPath(avatarId: string): string {
   return avatar?.modelPath || AVAILABLE_AVATARS[0].modelPath
 }
 
-export function AvatarSelector() {
+interface AvatarSelectorProps {
+  onAvatarChange?: () => void;
+}
+
+export function AvatarSelector({ onAvatarChange }: AvatarSelectorProps) {
   const { selectedAvatar, setSelectedAvatar } = useAppStore()
   const [tempAvatar, setTempAvatar] = useState(selectedAvatar)
 
   const handleSelect = (id: string) => {
     setTempAvatar(id)
     setSelectedAvatar(id)
+    onAvatarChange?.()
   }
 
   return (

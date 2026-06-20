@@ -25,7 +25,7 @@ function updateModelMotion(
       case 'idle': {
         const breathY = Math.sin(Date.now() / 1000) * 2;
         const breathX = Math.sin(Date.now() / 2000) * 0.5;
-        model.y = ((canvasRef.current?.width || 400) / 2) + model.height * model.scale.x * 0.1 + breathY;
+        model.y = ((canvasRef.current?.height || 600) / 2) + model.height * model.scale.x * 0.1 + breathY;
         model.x = (canvasRef.current?.width || 400) / 2 + breathX;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
@@ -67,6 +67,7 @@ function updateModelMotion(
 
 export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<unknown>(null);
   const modelRef = useRef<unknown>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -81,6 +82,10 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
 
   const initLive2D = useCallback(async () => {
     try {
+      setIsLoaded(false);
+      setLoadError(null);
+
+      // انتظار تحميل SDK
       const maxWait = 15000;
       const startTime = Date.now();
 
@@ -101,53 +106,71 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const PIXI = w.PIXI;
       const { Live2DModel } = PIXI.live2d;
 
-      // ✅ إصلاح خطأ checkMaxIfStatementsInShader في pixi.js 6.5.10
-      // تعطيل فحص حدود shader (يمنع تحميل النماذج المعقدة)
-      try {
-        if (PIXI.settings) {
-          // زيادة الحد الأقصى للـ shader statements
-          PIXI.settings.SPRITE_MAX_TEXTURES = 1;
-        }
-        // تعطيل فحص shader تماماً
-        if (PIXI.Program && PIXI.Program) {
-          // patch checkMaxIfStatementsInShader لتجاوز الفحص
-        }
-      } catch (_e) { /* ignore */ }
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
+      // ✅ تنظيف أي app سابق
       if (appRef.current) {
-        (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
+        try {
+          (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
+        } catch (_e) { /* ignore */ }
         appRef.current = null;
       }
 
+      // ✅ إلغاء أي animation frame سابق
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = 0;
+      }
+
+      // ✅ إنشاء canvas جديد في كل مرة (يتجنب مشاكل إعادة استخدام canvas)
+      const container = containerRef.current;
+      if (!container) return;
+
+      // إزالة canvas القديم
+      const oldCanvas = container.querySelector('canvas');
+      if (oldCanvas) {
+        oldCanvas.remove();
+      }
+
+      // إنشاء canvas جديد
+      const canvas = document.createElement('canvas');
+      canvas.width = 500;
+      canvas.height = 650;
+      canvas.className = 'max-w-full max-h-full';
+      canvas.style.touchAction = 'none';
+      container.appendChild(canvas);
+      canvasRef.current = canvas;
+
+      // ✅ إنشاء PIXI Application
       const app = new PIXI.Application({
         view: canvas,
         transparent: true,
         autoStart: true,
-        resizeTo: canvas.parentElement || undefined,
         backgroundAlpha: 0,
-        // ✅ تقليل تعقيد shader لتجنب خطأ checkMaxIfStatementsInShader
         antialias: false,
         forceFXAA: false,
-        powerPreference: 'low-power',
+        powerPreference: 'default',
+        width: 500,
+        height: 650,
       });
       appRef.current = app;
 
+      // ✅ تحميل النموذج
       const model = await Live2DModel.from(modelPath, { autoInteract: false });
       modelRef.current = model;
 
-      const scaleX = (canvas.width || 400) / model.width * 0.8;
-      const scaleY = (canvas.height || 600) / model.height * 0.8;
-      const scale = Math.min(scaleX, scaleY, 0.5);
+      // ✅ ضبط حجم النموذج
+      const containerW = container.clientWidth || 400;
+      const containerH = container.clientHeight || 600;
+      const scaleX = containerW / model.width * 0.7;
+      const scaleY = containerH / model.height * 0.7;
+      const scale = Math.min(scaleX, scaleY, 0.4);
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
-      model.x = (canvas.width || 400) / 2;
-      model.y = (canvas.height || 600) / 2 + model.height * scale * 0.1;
+      model.x = 500 / 2;
+      model.y = 650 / 2 + model.height * scale * 0.1;
 
       app.stage.addChild(model);
 
+      // ✅ بدء animation loop
       const animate = () => {
         updateModelMotion(model, avatarStateRef.current, canvasRef);
         animFrameRef.current = requestAnimationFrame(animate);
@@ -158,12 +181,14 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       setLoadError(null);
     } catch (err) {
       console.error('Live2D init error:', err);
-      const errMsg = err instanceof Error ? err.message : 'Failed to load Live2D model';
-      // ✅ رسالة خطأ أوضح للمستخدم
+      const errMsg = err instanceof Error ? err.message : 'Failed to load model';
+
       if (errMsg.includes('checkMaxIfStatementsInShader') || errMsg.includes('Invalid value')) {
         setLoadError('هذا الأفاتار معقد جداً للمتصفح. جرب أفاتاراً آخر.');
+      } else if (errMsg.includes('NetworkError') || errMsg.includes('Failed to fetch')) {
+        setLoadError('فشل تحميل ملفات الأفاتار. تأكد من اتصال الإنترنت.');
       } else {
-        setLoadError('فشل تحميل الأفاتار. تأكد من اتصال الإنترنت.');
+        setLoadError('فشل تحميل الأفاتار: ' + errMsg.substring(0, 80));
       }
     }
   }, [modelPath]);
@@ -174,36 +199,34 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
     return () => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = 0;
       }
       if (appRef.current) {
-        (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
+        try {
+          (appRef.current as { destroy: (v?: boolean) => void }).destroy(true);
+        } catch (_e) { /* ignore */ }
         appRef.current = null;
       }
     };
   }, [initLive2D]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
-      <canvas
-        ref={canvasRef}
-        width={500}
-        height={650}
-        className="max-w-full max-h-full"
-      />
+    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center">
+      {/* Canvas يُنشأ ديناميكياً في initLive2D */}
       {!isLoaded && !loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">جاري تحميل الأفاتار...</p>
+          <div className="w-12 h-12 border-4 border-pink-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400">جاري تحميل الأفاتار...</p>
         </div>
       )}
       {loadError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-destructive/20 flex items-center justify-center">
-            <svg className="w-6 h-6 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
+          <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <p className="text-sm text-destructive">{loadError}</p>
+          <p className="text-sm text-red-400 text-center">{loadError}</p>
         </div>
       )}
     </div>

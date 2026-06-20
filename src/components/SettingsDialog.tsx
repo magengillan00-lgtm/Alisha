@@ -338,6 +338,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [modelChanged, setModelChanged] = useState(false);
   // ✅ تتبع تغيير الصوت
   const [voiceChanged, setVoiceChanged] = useState(false);
+  // ✅ تتبع تغيير الأفاتار
+  const [avatarChanged, setAvatarChanged] = useState(false);
 
   const hasChanges = (
     tempLanguage !== responseLanguage ||
@@ -348,6 +350,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     keyChanged ||
     modelChanged ||
     voiceChanged ||
+    avatarChanged ||
     false
   );
 
@@ -1022,7 +1025,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
               {/* ===== اختيار الأفاتار ===== */}
               <SettingSection icon={<Sparkles className="w-4 h-4" />} label="اختيار الأفاتار" defaultOpen={false}>
-                <AvatarSelector />
+                <AvatarSelector onAvatarChange={() => setAvatarChanged(true)} />
               </SettingSection>
 
               {/* ===== Permanent Memory ===== */}
