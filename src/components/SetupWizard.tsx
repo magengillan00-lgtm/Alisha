@@ -16,6 +16,8 @@ function detectProvider(key: string): ApiProvider | null {
   if (k.startsWith('ak_')) return 'abliteration';
   if (k.startsWith('ar-')) return 'agentrouter';
   if (k.startsWith('sk-or-')) return 'openrouter';
+  // ✅ Z.ai keys: hex.hex format (e.g., a567a8f71e3c421e8471d71be6ecc5e7.GkqjSOJ2NKrN8Q0T)
+  if (/^[a-f0-9]{32}\.[A-Za-z0-9]{16}$/.test(k)) return 'zai';
   if (k.startsWith('sk-')) return 'openrouter'; // معظم مفاتيح sk- تكون OpenRouter
   return null;
 }

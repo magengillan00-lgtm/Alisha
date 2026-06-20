@@ -587,6 +587,63 @@ const agentrouterProvider: ProviderConfig = {
   },
 };
 
+// ============ Z.AI PROVIDER (GLM models) ============
+
+const ZAI_BASE_URL = 'https://api.z.ai/api/paas/v4';
+
+const zaiProvider: ProviderConfig = {
+  name: 'Z.ai (GLM)',
+  baseUrl: ZAI_BASE_URL,
+  listEndpoint: `${ZAI_BASE_URL}/models`,
+  chatEndpoint: () => `${ZAI_BASE_URL}/chat/completions`,
+  listModels: async (apiKey: string): Promise<string[]> => {
+    const res = await fetchWithTimeout(`${ZAI_BASE_URL}/models`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (!res.ok) throw new Error('مفتاح Z.ai API غير صالح.');
+    const data = await res.json();
+    const models = (data.data || [])
+      .map((m: { id: string }) => m.id)
+      .sort();
+    return models;
+  },
+  sendMessage: async (apiKey: string, model: string, messages: { role: string; content: string }[], systemPrompt: string): Promise<string> => {
+    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const res = await fetchWithTimeout(`${ZAI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: allMessages, max_tokens: 1024, temperature: 0.9 }),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMsg = errorData?.error?.message || '';
+      if (errorMsg.includes('Insufficient balance') || errorMsg.includes('1113')) {
+        throw new Error('رصيد Z.ai غير كافٍ. يرجى شحن الرصيد.');
+      }
+      throw new Error(errorMsg || 'حدث خطأ أثناء الاتصال بـ Z.ai');
+    }
+    const data = await res.json();
+    // ✅ معالجة reasoning models
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
+  },
+  testModel: async (apiKey: string, model: string): Promise<boolean> => {
+    try {
+      const res = await fetchWithTimeout(`${ZAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+};
+
 // ============ PROVIDER REGISTRY ============
 
 export const PROVIDERS: Record<ApiProvider, ProviderConfig> = {
@@ -600,6 +657,7 @@ export const PROVIDERS: Record<ApiProvider, ProviderConfig> = {
   mistral: mistralProvider,
   abliteration: abliterationProvider,
   agentrouter: agentrouterProvider,
+  zai: zaiProvider,
 };
 
 export const PROVIDER_INFO: { id: ApiProvider; name: string; nameAr: string; icon: string; color: string; keyPlaceholder: string }[] = [
@@ -613,6 +671,7 @@ export const PROVIDER_INFO: { id: ApiProvider; name: string; nameAr: string; ico
   { id: 'mistral', name: 'Mistral AI', nameAr: 'ميسترال', icon: '🌪️', color: 'from-sky-500 to-blue-600', keyPlaceholder: 'Bearer ...' },
   { id: 'abliteration', name: 'Abliteration AI', nameAr: 'أبليتريشن', icon: '🔥', color: 'from-rose-500 to-red-600', keyPlaceholder: 'ak_...' },
   { id: 'agentrouter', name: 'Agent Router', nameAr: 'أجنت راوتر', icon: '🤖', color: 'from-sky-500 to-indigo-600', keyPlaceholder: 'ar-...' },
+  { id: 'zai', name: 'Z.ai (GLM)', nameAr: 'زد أي آي', icon: '🌟', color: 'from-violet-500 to-fuchsia-500', keyPlaceholder: 'xxxxxxxxxxxx.xxxxxxxxxxxxxxxx' },
 ];
 
 // ============ PUBLIC API FUNCTIONS ============

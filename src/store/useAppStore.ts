@@ -34,7 +34,7 @@ export interface MemoryItem {
 }
 
 // Supported API providers
-export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'together' | 'openrouter' | 'cohere' | 'mistral' | 'abliteration' | 'agentrouter';
+export type ApiProvider = 'gemini' | 'huggingface' | 'nvidia' | 'groq' | 'together' | 'openrouter' | 'cohere' | 'mistral' | 'abliteration' | 'agentrouter' | 'zai';
 
 // Supported STT providers
 export type SttProvider = 'assemblyai' | 'webspeech';
@@ -87,11 +87,13 @@ function loadDefaultKeys(): ApiKeyEntry[] {
     const AB = process.env.NEXT_PUBLIC_ABLITERATION_KEY
     const HF = process.env.NEXT_PUBLIC_HUGGINGFACE_KEY
     const GM = process.env.NEXT_PUBLIC_GEMINI_KEY
+    const ZA = process.env.NEXT_PUBLIC_ZAI_KEY
     if (OR) keys.push({ provider: 'openrouter', key: OR })
     if (NV) keys.push({ provider: 'nvidia', key: NV })
     if (AB) keys.push({ provider: 'abliteration', key: AB })
     if (HF) keys.push({ provider: 'huggingface', key: HF })
     if (GM) keys.push({ provider: 'gemini', key: GM })
+    if (ZA) keys.push({ provider: 'zai', key: ZA })
   } catch {
     // process غير معرف - تجاهل
   }

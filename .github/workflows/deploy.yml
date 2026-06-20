@@ -37,6 +37,7 @@ jobs:
           echo "NEXT_PUBLIC_ABLITERATION_KEY=${{ secrets.ABLITERATION_KEY }}" >> .env.local
           echo "NEXT_PUBLIC_HUGGINGFACE_KEY=${{ secrets.HUGGINGFACE_KEY }}" >> .env.local
           echo "NEXT_PUBLIC_GEMINI_KEY=${{ secrets.GEMINI_KEY }}" >> .env.local
+          echo "NEXT_PUBLIC_ZAI_KEY=${{ secrets.ZAI_KEY }}" >> .env.local
           echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.local
           echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.local
           echo "=== .env.local created (values hidden) ==="
