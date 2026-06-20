@@ -47,7 +47,7 @@ export default function RootLayout({
 
         {/* Load Live2D SDK from CDN */}
         <Script
-          src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.10/browser/pixi.min.js"
+          src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.2/browser/pixi.min.js"
           strategy="beforeInteractive"
         />
         <Script

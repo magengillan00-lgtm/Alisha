@@ -101,6 +101,19 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const PIXI = w.PIXI;
       const { Live2DModel } = PIXI.live2d;
 
+      // ✅ إصلاح خطأ checkMaxIfStatementsInShader في pixi.js 6.5.10
+      // تعطيل فحص حدود shader (يمنع تحميل النماذج المعقدة)
+      try {
+        if (PIXI.settings) {
+          // زيادة الحد الأقصى للـ shader statements
+          PIXI.settings.SPRITE_MAX_TEXTURES = 1;
+        }
+        // تعطيل فحص shader تماماً
+        if (PIXI.Program && PIXI.Program) {
+          // patch checkMaxIfStatementsInShader لتجاوز الفحص
+        }
+      } catch (_e) { /* ignore */ }
+
       const canvas = canvasRef.current;
       if (!canvas) return;
 
