@@ -358,6 +358,19 @@ export const useAppStore = create<AppStore>()(
                 order: m.sort_order,
               })),
             })
+          } else {
+            // ✅ إذا لم توجد ذاكرة في Supabase، استخدم الافتراضية واحفظها
+            set({ permanentMemory: DEFAULT_PERMANENT_MEMORY })
+            try {
+              await replaceAllMemory(
+                DEFAULT_PERMANENT_MEMORY.map((m) => ({
+                  content: m.content,
+                  sort_order: m.order,
+                }))
+              )
+            } catch (e) {
+              console.error('Failed to save default memory:', e)
+            }
           }
 
           if (messages.length > 0) {
