@@ -70,16 +70,12 @@ export interface VoiceOption {
 }
 
 export const AVAILABLE_VOICES: VoiceOption[] = [
-  // العربية
-  { id: 'ar-1', name: 'صوت عربي (أنثوي)', gender: 'female', language: 'ar', description: 'صوت أنثوي طبيعي', rate: 1.0 },
-  { id: 'ar-2', name: 'صوت عربي (سريع)', gender: 'female', language: 'ar', description: 'صوت أنثوي سريع', rate: 1.4 },
-  // الإنجليزية
-  { id: 'en-1', name: 'English (Female)', gender: 'female', language: 'en', description: 'Natural female voice', rate: 1.0 },
-  { id: 'en-2', name: 'English (Male)', gender: 'male', language: 'en', description: 'Male voice via Web Speech API', rate: 1.0 },
-  { id: 'en-3', name: 'English (Fast)', gender: 'female', language: 'en', description: 'Fast female voice', rate: 1.4 },
-  // اليابانية
-  { id: 'ja-1', name: '日本語音声 (女性)', gender: 'female', language: 'ja', description: '自然な女性の声', rate: 1.0 },
-  { id: 'ja-2', name: '日本語音声 (速い)', gender: 'female', language: 'ja', description: '速い女性の声', rate: 1.4 },
+  // العربية - صوت واحد فقط
+  { id: 'ar-1', name: 'صوت عربي', gender: 'female', language: 'ar', description: 'صوت أنثوي طبيعي', rate: 1.0 },
+  // الإنجليزية - صوت واحد فقط
+  { id: 'en-1', name: 'English Voice', gender: 'female', language: 'en', description: 'Natural female voice', rate: 1.0 },
+  // اليابانية - صوت واحد فقط
+  { id: 'ja-1', name: '日本語音声', gender: 'female', language: 'ja', description: '自然な女性の声', rate: 1.0 },
 ];
 
 // ✅ الحصول على الأصوات المتاحة للغة معينة

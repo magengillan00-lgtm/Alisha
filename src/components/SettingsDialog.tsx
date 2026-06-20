@@ -335,6 +335,8 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // Track key/model changes for save button
   const [keyChanged, setKeyChanged] = useState(false);
   const [modelChanged, setModelChanged] = useState(false);
+  // ✅ تتبع تغيير الصوت
+  const [voiceChanged, setVoiceChanged] = useState(false);
 
   const hasChanges = (
     tempLanguage !== responseLanguage ||
@@ -344,6 +346,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     JSON.stringify(tempMemory) !== JSON.stringify(permanentMemory) ||
     keyChanged ||
     modelChanged ||
+    voiceChanged ||
     false
   );
 
@@ -926,7 +929,7 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
               {/* ===== اختيار الصوت ===== */}
               <SettingSection icon={<Mic className="w-4 h-4" />} label="اختيار الصوت" defaultOpen={true}>
-                <VoiceSelector currentLanguage={tempLanguage} />
+                <VoiceSelector currentLanguage={tempLanguage} onVoiceChange={() => setVoiceChanged(true)} />
               </SettingSection>
 
               {/* ===== Voice (read-only indicator, voice is always on) ===== */}

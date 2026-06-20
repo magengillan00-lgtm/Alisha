@@ -168,7 +168,11 @@ const huggingfaceProvider: ProviderConfig = {
       throw new Error('حدث خطأ أثناء الاتصال بـ HuggingFace');
     }
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -213,7 +217,11 @@ const nvidiaProvider: ProviderConfig = {
     });
     if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ NVIDIA API');
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -253,7 +261,11 @@ const groqProvider: ProviderConfig = {
     });
     if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Groq API');
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -293,7 +305,11 @@ const togetherProvider: ProviderConfig = {
     });
     if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Together API');
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -441,7 +457,11 @@ const mistralProvider: ProviderConfig = {
     });
     if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Mistral API');
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -481,7 +501,11 @@ const abliterationProvider: ProviderConfig = {
     });
     if (!res.ok) throw new Error('حدث خطأ أثناء الاتصال بـ Abliteration AI');
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+    const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
   },
   testModel: async (apiKey: string, model: string): Promise<boolean> => {
     try {
@@ -539,7 +563,11 @@ const agentrouterProvider: ProviderConfig = {
         throw new Error(errorData?.error?.message || 'حدث خطأ أثناء الاتصال بـ Agent Router');
       }
       const data = await res.json();
-      return data?.choices?.[0]?.message?.content || 'لم يتم الحصول على رد.';
+      const content = data?.choices?.[0]?.message?.content;
+    if (content && content.trim()) return content;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    if (reasoning && reasoning.trim()) return reasoning;
+    return 'لم يتم الحصول على رد.';
     } catch (err) {
       if (err instanceof Error && err.message.includes('Agent Router')) throw err;
       throw new Error('فشل الاتصال بـ Agent Router. قد يكون بسبب قيود الشبكة (CORS). حاول استخدام مزود آخر.');

@@ -6,12 +6,14 @@ import { AVAILABLE_VOICES, getVoicesForLanguage, getVoiceRate, speakText } from 
 import { Loader2, Play, Check } from 'lucide-react'
 
 interface VoiceSelectorProps {
-  currentLanguage?: string; // ✅ tempLanguage من SettingsDialog
+  currentLanguage?: string;
+  onVoiceChange?: () => void; // ✅ callback عند تغيير الصوت
 }
 
-export function VoiceSelector({ currentLanguage }: VoiceSelectorProps) {
+export function VoiceSelector({ currentLanguage, onVoiceChange }: VoiceSelectorProps) {
   const { responseLanguage, selectedVoiceId, setSelectedVoiceId } = useAppStore()
   const [testing, setTesting] = useState<string | null>(null)
+  const [tempVoiceId, setTempVoiceId] = useState(selectedVoiceId)
 
   // ✅ استخدم currentLanguage (tempLanguage) إن وُجد، وإلا responseLanguage
   const langCode = (currentLanguage || responseLanguage || 'ar').split('-')[0]
@@ -20,15 +22,19 @@ export function VoiceSelector({ currentLanguage }: VoiceSelectorProps) {
   // إذا لم يوجد صوت مطابق للغة الحالية، اعرض كل الأصوات
   const displayVoices = voices.length > 0 ? voices : AVAILABLE_VOICES
 
+  const handleSelect = (voiceId: string) => {
+    setTempVoiceId(voiceId)
+    setSelectedVoiceId(voiceId)
+    onVoiceChange?.() // ✅ إخبار SettingsDialog بالتغيير
+  }
+
   const handleTest = async (voiceId: string) => {
     setTesting(voiceId)
-    const voice = AVAILABLE_VOICES.find(v => v.id === voiceId)
     const testText = langCode === 'ar' ? 'مرحبا، هذا اختبار للصوت'
       : langCode === 'ja' ? 'こんにちは、これは音声テストです'
       : 'Hello, this is a voice test'
 
     try {
-      // ✅ استخدام getVoiceRate للحصول على rate الصحيح
       const rate = getVoiceRate(voiceId)
       await speakText(
         testText,
@@ -52,24 +58,24 @@ export function VoiceSelector({ currentLanguage }: VoiceSelectorProps) {
         <div
           key={voice.id}
           className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-            selectedVoiceId === voice.id
+            tempVoiceId === voice.id
               ? 'bg-pink-500/15 border-pink-500/40'
               : 'bg-white/5 border-white/10 hover:bg-white/10'
           }`}
         >
           <button
-            onClick={() => setSelectedVoiceId(voice.id)}
+            onClick={() => handleSelect(voice.id)}
             className="flex items-center gap-3 flex-1 text-right"
           >
             <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-              selectedVoiceId === voice.id
+              tempVoiceId === voice.id
                 ? 'bg-pink-500 border-pink-500'
                 : 'border-gray-500'
             }`}>
-              {selectedVoiceId === voice.id && <Check className="w-3 h-3 text-white" />}
+              {tempVoiceId === voice.id && <Check className="w-3 h-3 text-white" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm font-medium ${selectedVoiceId === voice.id ? 'text-pink-300' : 'text-gray-300'}`}>
+              <p className={`text-sm font-medium ${tempVoiceId === voice.id ? 'text-pink-300' : 'text-gray-300'}`}>
                 {voice.name}
               </p>
               <p className="text-[10px] text-gray-500 truncate">
@@ -98,7 +104,7 @@ export function VoiceSelector({ currentLanguage }: VoiceSelectorProps) {
       ))}
 
       <p className="text-[10px] text-gray-600 mt-2">
-        💡 الأصوات تعتمد على Google Translate TTS عبر proxy. قد تختلف الجودة حسب اللغة.
+        💡 الأصوات تعتمد على Google Translate TTS عبر proxy.
       </p>
     </div>
   )
