@@ -20,25 +20,30 @@ function updateModelMotion(
   try {
     const coreModel = model.internalModel?.coreModel;
     if (!coreModel) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cw = canvas.width;
+    const ch = canvas.height;
 
     switch (state) {
       case 'idle': {
         const breathY = Math.sin(Date.now() / 1000) * 2;
         const breathX = Math.sin(Date.now() / 2000) * 0.5;
-        model.y = ((canvasRef.current?.height || 600) / 2) + model.height * model.scale.x * 0.1 + breathY;
-        model.x = (canvasRef.current?.width || 400) / 2 + breathX;
+        model.x = cw / 2 + breathX;
+        model.y = ch / 2 + model.height * model.scale.x * 0.15 + breathY;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
+          coreModel.setParameterValueById('ParamBreath', (Math.sin(Date.now() / 2000) + 1) / 2);
         }
         break;
       }
       case 'listening': {
         const listenX = Math.sin(Date.now() / 500) * 3;
-        const listenY = Math.sin(Date.now() / 800) * 1;
-        model.x = (canvasRef.current?.width || 400) / 2 + listenX;
-        model.y = ((canvasRef.current?.height || 600) / 2) + model.height * model.scale.x * 0.1 + listenY;
+        model.x = cw / 2 + listenX;
+        model.y = ch / 2 + model.height * model.scale.x * 0.15;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0.1);
+          coreModel.setParameterValueById('ParamAngleZ', Math.sin(Date.now() / 600) * 5);
         }
         break;
       }
@@ -48,6 +53,8 @@ function updateModelMotion(
           coreModel.setParameterValueById('ParamAngleX', thinkAngle);
           coreModel.setParameterValueById('ParamAngleY', Math.sin(Date.now() / 800) * 5);
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
+          coreModel.setParameterValueById('ParamEyeLOpen', 0.5);
+          coreModel.setParameterValueById('ParamEyeROpen', 0.5);
         }
         break;
       }
@@ -56,6 +63,8 @@ function updateModelMotion(
           const mouthValue = Math.abs(Math.sin(Date.now() / 150)) * 0.8 + 0.1;
           coreModel.setParameterValueById('ParamMouthOpenY', mouthValue);
           coreModel.setParameterValueById('ParamMouthForm', Math.sin(Date.now() / 300) * 0.3);
+          coreModel.setParameterValueById('ParamEyeLOpen', 1);
+          coreModel.setParameterValueById('ParamEyeROpen', 1);
         }
         break;
       }
@@ -75,7 +84,6 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   const animFrameRef = useRef<number>(0);
   const avatarStateRef = useRef(avatarState);
 
-  // Keep avatarState in a ref so the animation loop always uses latest value
   useEffect(() => {
     avatarStateRef.current = avatarState;
   }, [avatarState]);
@@ -85,7 +93,6 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       setIsLoaded(false);
       setLoadError(null);
 
-      // انتظار تحميل SDK
       const maxWait = 15000;
       const startTime = Date.now();
 
@@ -114,28 +121,33 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
         appRef.current = null;
       }
 
-      // ✅ إلغاء أي animation frame سابق
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = 0;
       }
 
-      // ✅ إنشاء canvas جديد في كل مرة (يتجنب مشاكل إعادة استخدام canvas)
       const container = containerRef.current;
       if (!container) return;
 
-      // إزالة canvas القديم
+      // ✅ إزالة canvas القديم
       const oldCanvas = container.querySelector('canvas');
-      if (oldCanvas) {
-        oldCanvas.remove();
-      }
+      if (oldCanvas) oldCanvas.remove();
 
-      // إنشاء canvas جديد
+      // ✅ إنشاء canvas بحجم كبير يملأ الحاوية
+      const containerW = container.clientWidth || 400;
+      const containerH = container.clientHeight || 600;
+      // استخدام أعلى دقة ممكنة
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const canvasW = Math.max(containerW, 400);
+      const canvasH = Math.max(containerH, 600);
+
       const canvas = document.createElement('canvas');
-      canvas.width = 500;
-      canvas.height = 650;
-      canvas.className = 'max-w-full max-h-full';
+      canvas.width = canvasW * dpr;
+      canvas.height = canvasH * dpr;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
       canvas.style.touchAction = 'none';
+      canvas.style.cursor = 'grab';
       container.appendChild(canvas);
       canvasRef.current = canvas;
 
@@ -145,11 +157,11 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
         transparent: true,
         autoStart: true,
         backgroundAlpha: 0,
-        antialias: false,
-        forceFXAA: false,
-        powerPreference: 'default',
-        width: 500,
-        height: 650,
+        antialias: true,
+        resolution: dpr,
+        autoDensity: true,
+        width: canvasW,
+        height: canvasH,
       });
       appRef.current = app;
 
@@ -157,18 +169,63 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const model = await Live2DModel.from(modelPath, { autoInteract: false });
       modelRef.current = model;
 
-      // ✅ ضبط حجم النموذج
-      const containerW = container.clientWidth || 400;
-      const containerH = container.clientHeight || 600;
-      const scaleX = containerW / model.width * 0.7;
-      const scaleY = containerH / model.height * 0.7;
-      const scale = Math.min(scaleX, scaleY, 0.4);
+      // ✅ ضبط حجم النموذج ليملأ الشاشة - أكبر بكثير
+      const modelW = model.width;
+      const modelH = model.height;
+      // حساب scale ليملأ 85% من الحاوية
+      const scaleX = canvasW / modelW * 0.85;
+      const scaleY = canvasH / modelH * 0.85;
+      // استخدام الأصغر لضمان ظهور كامل النموذج
+      const scale = Math.min(scaleX, scaleY);
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
-      model.x = 500 / 2;
-      model.y = 650 / 2 + model.height * scale * 0.1;
+      model.x = canvasW / 2;
+      model.y = canvasH / 2 + modelH * scale * 0.15;
 
       app.stage.addChild(model);
+
+      // ✅ تفعيل تفاعل اللمس (Touch following)
+      // الأفاتار يتبع حركة الإصبع/الماوس بعينه
+      const onPointerMove = (event: PointerEvent) => {
+        try {
+          const rect = canvas.getBoundingClientRect();
+          const x = ((event.clientX - rect.left) / rect.width) * 2 - 1; // -1 to 1
+          const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1); // -1 to 1
+
+          const coreModel = (model as any).internalModel?.coreModel;
+          if (coreModel && coreModel.setParameterValueById) {
+            // العينان تتبعان المؤشر
+            coreModel.setParameterValueById('ParamAngleX', x * 30);
+            coreModel.setParameterValueById('ParamAngleY', y * 30);
+            coreModel.setParameterValueById('ParamEyeBallX', x);
+            coreModel.setParameterValueById('ParamEyeBallY', y);
+            coreModel.setParameterValueById('ParamBodyAngleX', x * 10);
+          }
+        } catch (_e) { /* ignore */ }
+      };
+
+      // ✅ تفعيل النقر على النموذج (تعبيرات تفاعلية)
+      const onPointerDown = (event: PointerEvent) => {
+        try {
+          const coreModel = (model as any).internalModel?.coreModel;
+          if (coreModel && coreModel.setParameterValueById) {
+            // تعبير مفاجأة عند النقر
+            coreModel.setParameterValueById('ParamEyeLOpen', 1.2);
+            coreModel.setParameterValueById('ParamEyeROpen', 1.2);
+            coreModel.setParameterValueById('ParamMouthOpenY', 0.5);
+            setTimeout(() => {
+              try {
+                coreModel.setParameterValueById('ParamEyeLOpen', 1);
+                coreModel.setParameterValueById('ParamEyeROpen', 1);
+                coreModel.setParameterValueById('ParamMouthOpenY', 0);
+              } catch (_e) { /* ignore */ }
+            }, 300);
+          }
+        } catch (_e) { /* ignore */ }
+      };
+
+      canvas.addEventListener('pointermove', onPointerMove);
+      canvas.addEventListener('pointerdown', onPointerDown);
 
       // ✅ بدء animation loop
       const animate = () => {
@@ -179,6 +236,12 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
 
       setIsLoaded(true);
       setLoadError(null);
+
+      // تنظيف event listeners عند الإزالة
+      return () => {
+        canvas.removeEventListener('pointermove', onPointerMove);
+        canvas.removeEventListener('pointerdown', onPointerDown);
+      };
     } catch (err) {
       console.error('Live2D init error:', err);
       const errMsg = err instanceof Error ? err.message : 'Failed to load model';
@@ -194,9 +257,14 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   }, [modelPath]);
 
   useEffect(() => {
-    initLive2D();
+    let cleanupFn: (() => void) | undefined;
+
+    initLive2D().then((fn) => {
+      if (fn) cleanupFn = fn;
+    });
 
     return () => {
+      if (cleanupFn) cleanupFn();
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = 0;
@@ -211,7 +279,7 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
   }, [initLive2D]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center">
+    <div ref={containerRef} className="relative w-full h-full flex items-center justify-center overflow-hidden">
       {/* Canvas يُنشأ ديناميكياً في initLive2D */}
       {!isLoaded && !loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
