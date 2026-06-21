@@ -13,24 +13,26 @@ interface Live2DViewerProps {
 function updateModelMotion(
   model: any,
   state: AvatarState,
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
+  // logical stage dimensions (CSS pixels), NOT canvas.width/height which include DPR
+  stageW: number,
+  stageH: number,
+  centerX: number,
+  centerY: number
 ) {
   if (!model) return;
 
   try {
     const coreModel = model.internalModel?.coreModel;
     if (!coreModel) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const cw = canvas.width;
-    const ch = canvas.height;
 
+    // ✅ الحفاظ على مركز النموذج ثابتاً - فقط حركات طفيفة للتنفس
+    // نستخدم centerX/centerY (الإحداثيات المنطقية) وليس canvas.width/height
     switch (state) {
       case 'idle': {
         const breathY = Math.sin(Date.now() / 1000) * 2;
         const breathX = Math.sin(Date.now() / 2000) * 0.5;
-        model.x = cw / 2 + breathX;
-        model.y = ch / 2 + breathY;
+        model.x = centerX + breathX;
+        model.y = centerY + breathY;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
           coreModel.setParameterValueById('ParamBreath', (Math.sin(Date.now() / 2000) + 1) / 2);
@@ -39,8 +41,8 @@ function updateModelMotion(
       }
       case 'listening': {
         const listenX = Math.sin(Date.now() / 500) * 3;
-        model.x = cw / 2 + listenX;
-        model.y = ch / 2;
+        model.x = centerX + listenX;
+        model.y = centerY;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0.1);
           coreModel.setParameterValueById('ParamAngleZ', Math.sin(Date.now() / 600) * 5);
@@ -72,6 +74,8 @@ function updateModelMotion(
   } catch (_e) {
     // Silently handle parameter errors
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void stageW; void stageH;
 }
 
 export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerProps) {
@@ -230,8 +234,12 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       canvas.addEventListener('pointerdown', onPointerDown);
 
       // ✅ بدء animation loop
+      // نستخدم الأبعاد المنطقية (canvasW, canvasH) - وهي نفس أبعاد stage في PIXI
+      // مهم: لا نستخدم canvas.width/height لأنها تشمل DPR وتسبب ظهور الأفاتار في أسفل يمين
+      const centerX = canvasW / 2;
+      const centerY = canvasH / 2;
       const animate = () => {
-        updateModelMotion(model, avatarStateRef.current, canvasRef);
+        updateModelMotion(model, avatarStateRef.current, canvasW, canvasH, centerX, centerY);
         animFrameRef.current = requestAnimationFrame(animate);
       };
       animFrameRef.current = requestAnimationFrame(animate);
