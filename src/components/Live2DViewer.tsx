@@ -172,12 +172,10 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       // ✅ ضبط حجم النموذج ليملأ الشاشة بالكامل
       const modelW = model.width;
       const modelH = model.height;
-      // ✅ استخدام Math.min ليملأ الشاشة بدون قطع
-      // ضرب في 0.95 لترك هامش بسيط
-      const scaleX = canvasW / modelW * 0.95;
-      const scaleY = canvasH / modelH * 0.95;
-      let scale = Math.min(scaleX, scaleY);
-      // ضمان حد أدنى معقول
+      // ✅ ملء ارتفاع الشاشة بالكامل (قد يقطع الأطراف الأفقية)
+      // هذا يجعل الأفاتار كبيراً وواضحاً على الموبايل
+      // نماذج Live2D لها هوامش آمنة يمكن قطعها
+      let scale = canvasH / modelH;  // ملء 100% من الارتفاع
       scale = Math.max(scale, 0.05);
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
