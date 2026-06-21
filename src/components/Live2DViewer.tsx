@@ -30,7 +30,7 @@ function updateModelMotion(
         const breathY = Math.sin(Date.now() / 1000) * 2;
         const breathX = Math.sin(Date.now() / 2000) * 0.5;
         model.x = cw / 2 + breathX;
-        model.y = ch / 2 + model.height * model.scale.x * 0.15 + breathY;
+        model.y = ch / 2 + breathY;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0);
           coreModel.setParameterValueById('ParamBreath', (Math.sin(Date.now() / 2000) + 1) / 2);
@@ -40,7 +40,7 @@ function updateModelMotion(
       case 'listening': {
         const listenX = Math.sin(Date.now() / 500) * 3;
         model.x = cw / 2 + listenX;
-        model.y = ch / 2 + model.height * model.scale.x * 0.15;
+        model.y = ch / 2;
         if (coreModel.setParameterValueById) {
           coreModel.setParameterValueById('ParamMouthOpenY', 0.1);
           coreModel.setParameterValueById('ParamAngleZ', Math.sin(Date.now() / 600) * 5);
@@ -172,19 +172,18 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       // ✅ ضبط حجم النموذج ليملأ الشاشة بالكامل
       const modelW = model.width;
       const modelH = model.height;
-      // استخدام Math.max بدلاً من Math.min لملء الشاشة
-      // النموذج سيملأ الارتفاع (وهو الأهم للموبايل)
-      const scaleX = canvasW / modelW;
-      const scaleY = canvasH / modelH;
-      // استخدام الأكبر ليملأ الشاشة (قد يقطع بعض الأطراف لكن يظهر كبيراً)
-      let scale = Math.max(scaleX, scaleY);
-      // ضمان أن النموذج لا يصبح صغيراً جداً
-      scale = Math.max(scale, 0.1);
+      // ✅ استخدام Math.min ليملأ الشاشة بدون قطع
+      // ضرب في 0.95 لترك هامش بسيط
+      const scaleX = canvasW / modelW * 0.95;
+      const scaleY = canvasH / modelH * 0.95;
+      let scale = Math.min(scaleX, scaleY);
+      // ضمان حد أدنى معقول
+      scale = Math.max(scale, 0.05);
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
       // توسيط النموذج مع إزاحة طفيفة للأسفل
       model.x = canvasW / 2;
-      model.y = canvasH / 2 + modelH * scale * 0.1;
+      model.y = canvasH / 2;
 
       app.stage.addChild(model);
 
