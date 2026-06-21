@@ -471,7 +471,7 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'alisha-store',
-      version: 3, // ✅ نسخة 3: إضافة Z.ai key + إعادة تحميل كل المفاتيح
+      version: 4, // ✅ نسخة 3: إضافة Z.ai key + إعادة تحميل كل المفاتيح
       // ✅ نخزّن فقط المفاتيح والبيانات المحلية، الإعدادات والذاكرة في Supabase
       partialize: (state) => ({
         apiKeys: state.apiKeys,

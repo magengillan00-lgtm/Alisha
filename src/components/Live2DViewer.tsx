@@ -177,6 +177,7 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       // نماذج Live2D لها هوامش آمنة يمكن قطعها
       let scale = canvasH / modelH;  // ملء 100% من الارتفاع
       scale = Math.max(scale, 0.05);
+      console.log('Live2D dimensions:', { canvasW, canvasH, modelW, modelH, scale, renderedW: modelW*scale, renderedH: modelH*scale });
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
       // توسيط النموذج مع إزاحة طفيفة للأسفل
