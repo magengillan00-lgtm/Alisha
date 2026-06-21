@@ -133,13 +133,13 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const oldCanvas = container.querySelector('canvas');
       if (oldCanvas) oldCanvas.remove();
 
-      // ✅ إنشاء canvas بحجم كبير يملأ الحاوية
-      const containerW = container.clientWidth || 400;
-      const containerH = container.clientHeight || 600;
-      // استخدام أعلى دقة ممكنة
+      // ✅ إنشاء canvas بحجم الحاوية بالضبط
+      const containerW = container.clientWidth || 390;
+      const containerH = container.clientHeight || 700;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const canvasW = Math.max(containerW, 400);
-      const canvasH = Math.max(containerH, 600);
+      // استخدام أبعاد الحاوية مباشرة (لا حد أدنى اصطناعي)
+      const canvasW = containerW;
+      const canvasH = containerH;
 
       const canvas = document.createElement('canvas');
       canvas.width = canvasW * dpr;
@@ -169,18 +169,22 @@ export default function Live2DViewer({ avatarState, modelPath }: Live2DViewerPro
       const model = await Live2DModel.from(modelPath, { autoInteract: false });
       modelRef.current = model;
 
-      // ✅ ضبط حجم النموذج ليملأ الشاشة - أكبر بكثير
+      // ✅ ضبط حجم النموذج ليملأ الشاشة بالكامل
       const modelW = model.width;
       const modelH = model.height;
-      // حساب scale ليملأ 85% من الحاوية
-      const scaleX = canvasW / modelW * 0.85;
-      const scaleY = canvasH / modelH * 0.85;
-      // استخدام الأصغر لضمان ظهور كامل النموذج
-      const scale = Math.min(scaleX, scaleY);
+      // استخدام Math.max بدلاً من Math.min لملء الشاشة
+      // النموذج سيملأ الارتفاع (وهو الأهم للموبايل)
+      const scaleX = canvasW / modelW;
+      const scaleY = canvasH / modelH;
+      // استخدام الأكبر ليملأ الشاشة (قد يقطع بعض الأطراف لكن يظهر كبيراً)
+      let scale = Math.max(scaleX, scaleY);
+      // ضمان أن النموذج لا يصبح صغيراً جداً
+      scale = Math.max(scale, 0.1);
       model.scale.set(scale);
       model.anchor.set(0.5, 0.5);
+      // توسيط النموذج مع إزاحة طفيفة للأسفل
       model.x = canvasW / 2;
-      model.y = canvasH / 2 + modelH * scale * 0.15;
+      model.y = canvasH / 2 + modelH * scale * 0.1;
 
       app.stage.addChild(model);
 
