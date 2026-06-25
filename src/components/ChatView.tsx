@@ -304,11 +304,22 @@ export default function ChatView() {
         const speechLang = SPEECH_LANGUAGES[responseLanguage] || 'ar-SA';
         // ✅ الحصول على rate من الصوت المختار
         const voiceRate = getVoiceRate(selectedVoiceId);
+
+        // ✅ Safety timeout: إذا لم تنتهِ spokeText خلال (النص الطول × 150ms + 40 ثانية)، أجبر العودة لـ idle
+        const safetyMaxMs = Math.max(40000, responseText.length * 150);
+        const speakingSafetyTimer = setTimeout(() => {
+          console.warn('ChatView: Speaking safety timeout, forcing idle');
+          cancelSpeech();
+          setIsSpeaking(false);
+          setAvatarState('idle');
+        }, safetyMaxMs);
+
         setTimeout(() => {
           speakText(
             responseText,
             speechLang,
             () => {
+              clearTimeout(speakingSafetyTimer);
               setIsSpeaking(false);
               setAvatarState('idle');
             },

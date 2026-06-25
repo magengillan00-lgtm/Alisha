@@ -333,8 +333,22 @@ function speakSingle(
   let started = false;
   let ended = false;
 
+  // ✅ Safety timeout: إذا لم ينتهِ الصوت خلال (النص الطول × 0.15 + 15) ثانية، أجبر onEnd
+  const maxDurationMs = Math.max(15000, text.length * 150);
+  const safetyTimer = setTimeout(() => {
+    if (ended) return;
+    console.warn('TTS: Web Speech safety timeout, forcing end');
+    ended = true;
+    stopKeepAlive();
+    try { synth.cancel(); } catch { /* ignore */ }
+    if (generation === currentSpeechGeneration) onEnd();
+  }, maxDurationMs);
+
   utterance.onstart = () => {
-    if (generation !== currentSpeechGeneration) return;
+    if (generation !== currentSpeechGeneration) {
+      clearTimeout(safetyTimer);
+      return;
+    }
     if (!started) {
       started = true;
       onStart?.();
@@ -345,6 +359,7 @@ function speakSingle(
   utterance.onend = () => {
     if (ended) return;
     ended = true;
+    clearTimeout(safetyTimer);
     stopKeepAlive();
     if (generation === currentSpeechGeneration) onEnd();
   };
@@ -354,12 +369,14 @@ function speakSingle(
     const err = e as SpeechSynthesisErrorEvent;
     if (err.error === 'canceled' || err.error === 'interrupted') {
       ended = true;
+      clearTimeout(safetyTimer);
       stopKeepAlive();
       if (generation === currentSpeechGeneration) onEnd();
     } else {
       // Fall back to Google TTS
       console.warn('TTS: Web Speech error, falling back to Google TTS:', err.error);
       ended = true;
+      clearTimeout(safetyTimer);
       stopKeepAlive();
       speakWithGoogleTTS(text, lang, onEnd, onStart, rate);
     }
@@ -381,11 +398,26 @@ function speakInChunks(
   let started = false;
   let ended = false;
 
+  // ✅ Safety timeout للنص الكامل: نص الطول × 150ms + 20 ثانية احتياط
+  const totalMaxMs = Math.max(20000, text.length * 150);
+  const totalSafetyTimer = setTimeout(() => {
+    if (ended) return;
+    console.warn('TTS: Web Speech total safety timeout, forcing end');
+    ended = true;
+    stopKeepAlive();
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    if (generation === currentSpeechGeneration) onEnd();
+  }, totalMaxMs);
+
   function speakNext() {
-    if (generation !== currentSpeechGeneration) return;
+    if (generation !== currentSpeechGeneration) {
+      clearTimeout(totalSafetyTimer);
+      return;
+    }
     if (chunkIndex >= chunks.length) {
       if (!ended) {
         ended = true;
+        clearTimeout(totalSafetyTimer);
         stopKeepAlive();
         onEnd();
       }
@@ -403,7 +435,17 @@ function speakInChunks(
     const voice = findVoice(langCode);
     if (voice) utterance.voice = voice;
 
+    // ✅ per-chunk safety: 12 ثانية كحد أقصى لكل chunk
+    const chunkTimer = setTimeout(() => {
+      if (ended) return;
+      console.warn('TTS: chunk timeout, skipping to next');
+      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+      chunkIndex++;
+      speakNext();
+    }, 12000);
+
     utterance.onstart = () => {
+      clearTimeout(chunkTimer);
       if (generation !== currentSpeechGeneration) return;
       if (!started) {
         started = true;
@@ -413,21 +455,25 @@ function speakInChunks(
     };
 
     utterance.onend = () => {
+      clearTimeout(chunkTimer);
       if (generation !== currentSpeechGeneration) return;
       chunkIndex++;
       speakNext();
     };
 
     utterance.onerror = (e) => {
+      clearTimeout(chunkTimer);
       if (ended) return;
       const err = e as SpeechSynthesisErrorEvent;
       if (err.error === 'canceled' || err.error === 'interrupted') {
         ended = true;
+        clearTimeout(totalSafetyTimer);
         stopKeepAlive();
         onEnd();
       } else {
         // Fall back to Google TTS for remaining text
         ended = true;
+        clearTimeout(totalSafetyTimer);
         stopKeepAlive();
         const remainingText = chunks.slice(chunkIndex).join(' ');
         speakWithGoogleTTS(remainingText || text, lang, onEnd, onStart, rate);
@@ -484,17 +530,40 @@ function stopKeepAlive(): void {
   }
 }
 
+/**
+ * ✅ keepAlive محسّن - بدون pause/resume hack.
+ * الـ hack القديم (pause + resume) كان يسبب عدم إطلاق onend على Android Chrome.
+ * بدلاً من ذلك: نتحقق فقط مما إذا كان speechSynthesis ما زال يتحدث.
+ * إذا توقف لكن onend لم يطلق، نطلقه يدوياً.
+ */
 function startKeepAlive(): void {
   stopKeepAlive();
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+  let lastSpeakingState = true;
+  let stallCount = 0;
+
   keepAliveTimer = setInterval(() => {
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.pause();
-      window.speechSynthesis.resume();
-    } else {
+    if (!window.speechSynthesis) {
       stopKeepAlive();
+      return;
     }
-  }, 5000);
+
+    const isSpeaking = window.speechSynthesis.speaking;
+
+    if (isSpeaking) {
+      stallCount = 0;
+      lastSpeakingState = true;
+    } else {
+      // speechSynthesis توقف لكن onend لم يطلق
+      stallCount++;
+      if (stallCount >= 2 && lastSpeakingState) {
+        // توقف فجأة - نطلق cancel لتنظيف الحالة
+        try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+        stopKeepAlive();
+      }
+    }
+  }, 3000);
 }
 
 function cancelAndWait(): Promise<void> {
@@ -621,14 +690,69 @@ async function speakWithGoogleTTS(
   const langCode = GTTS_LANG_MAP[lang.split('-')[0]] || 'en';
   let chunkIndex = 0;
   let started = false;
+  let finished = false;
+
+  // ✅ Safety timeout إجمالي: نص الطول × 150ms + 30 ثانية احتياط
+  const totalMaxMs = Math.max(30000, text.length * 150);
+  const totalSafetyTimer = setTimeout(() => {
+    if (finished) return;
+    console.warn('TTS: Google TTS total safety timeout, forcing end');
+    finished = true;
+    if (audioElement) {
+      try { audioElement.pause(); audioElement.src = ''; } catch { /* ignore */ }
+      audioElement = null;
+    }
+    cleanupBlobUrls();
+    if (thisGeneration === currentSpeechGeneration) onEnd();
+  }, totalMaxMs);
+
+  // ✅ Stall detector: يتحقق كل 3 ثوانٍ إذا كان audio.currentTime لم يتغير
+  let lastCurrentTime = 0;
+  let stallCount = 0;
+  const stallDetector = setInterval(() => {
+    if (finished || !audioElement) return;
+    const ct = audioElement.currentTime;
+    if (ct === lastCurrentTime) {
+      stallCount++;
+      if (stallCount >= 3) {
+        // لا تقدم في الصوت لمدة 9 ثوانٍ - أجبر الانتقال للـ chunk التالي
+        console.warn('TTS: Audio stalled for 9s, skipping chunk');
+        stallCount = 0;
+        try { audioElement.pause(); audioElement.src = ''; } catch { /* ignore */ }
+        chunkIndex++;
+        if (chunkIndex < chunks.length) {
+          setTimeout(playNextChunk, 100);
+        } else {
+          finished = true;
+          clearTimeout(totalSafetyTimer);
+          clearInterval(stallDetector);
+          audioElement = null;
+          cleanupBlobUrls();
+          if (thisGeneration === currentSpeechGeneration) onEnd();
+        }
+      }
+    } else {
+      stallCount = 0;
+      lastCurrentTime = ct;
+    }
+  }, 3000);
 
   async function playNextChunk(): Promise<void> {
-    if (thisGeneration !== currentSpeechGeneration) return;
+    if (thisGeneration !== currentSpeechGeneration) {
+      clearTimeout(totalSafetyTimer);
+      clearInterval(stallDetector);
+      return;
+    }
     if (chunkIndex >= chunks.length) {
-      audioElement = null;
-      cleanupBlobUrls();
-      if (thisGeneration === currentSpeechGeneration) {
-        onEnd();
+      if (!finished) {
+        finished = true;
+        clearTimeout(totalSafetyTimer);
+        clearInterval(stallDetector);
+        audioElement = null;
+        cleanupBlobUrls();
+        if (thisGeneration === currentSpeechGeneration) {
+          onEnd();
+        }
       }
       return;
     }
@@ -638,7 +762,11 @@ async function speakWithGoogleTTS(
     // ✅ تمرير rate للـ proxy
     const blobUrl = await fetchTTSBlob(chunk, langCode, rate);
 
-    if (thisGeneration !== currentSpeechGeneration) return;
+    if (thisGeneration !== currentSpeechGeneration) {
+      clearTimeout(totalSafetyTimer);
+      clearInterval(stallDetector);
+      return;
+    }
 
     if (!blobUrl) {
       console.warn('TTS: All fetch attempts failed for chunk', chunkIndex);
@@ -646,9 +774,14 @@ async function speakWithGoogleTTS(
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 100);
       } else {
-        audioElement = null;
-        cleanupBlobUrls();
-        onEnd();
+        if (!finished) {
+          finished = true;
+          clearTimeout(totalSafetyTimer);
+          clearInterval(stallDetector);
+          audioElement = null;
+          cleanupBlobUrls();
+          onEnd();
+        }
       }
       return;
     }
@@ -664,6 +797,9 @@ async function speakWithGoogleTTS(
 
     // ✅ تطبيق rate على عنصر الصوت (يتحكم في سرعة التشغيل)
     audio.playbackRate = rate;
+    // ✅ إعادة تعيين stall detector لكل chunk جديد
+    lastCurrentTime = 0;
+    stallCount = 0;
 
     audio.onplaying = () => {
       if (thisGeneration !== currentSpeechGeneration) {
@@ -702,9 +838,14 @@ async function speakWithGoogleTTS(
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 100);
       } else {
-        audioElement = null;
-        cleanupBlobUrls();
-        onEnd();
+        if (!finished) {
+          finished = true;
+          clearTimeout(totalSafetyTimer);
+          clearInterval(stallDetector);
+          audioElement = null;
+          cleanupBlobUrls();
+          onEnd();
+        }
       }
     };
 
@@ -718,9 +859,14 @@ async function speakWithGoogleTTS(
       if (chunkIndex < chunks.length) {
         setTimeout(playNextChunk, 100);
       } else {
-        audioElement = null;
-        cleanupBlobUrls();
-        onEnd();
+        if (!finished) {
+          finished = true;
+          clearTimeout(totalSafetyTimer);
+          clearInterval(stallDetector);
+          audioElement = null;
+          cleanupBlobUrls();
+          onEnd();
+        }
       }
     }
   }
